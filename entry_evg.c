@@ -357,10 +357,12 @@ typedef struct WorldFrame {
     Matrix4 world_proj;
     Matrix4 world_view;
     Entity *player;
+    Entity *planet;
 } WorldFrame;
 WorldFrame world_frame;
 
 Entity *get_player() { return world_frame.player; }
+Entity *get_planet() { return world_frame.planet; }
 
 //: setup
 Entity *entity_create() {
@@ -766,10 +768,10 @@ int entry(int argc, char **argv) {
             (Sprite){.image = load_image_from_disk(fixed_string("res\\sprites\\player.png"), get_heap_allocator())};
         sprites[SPRITE_monster] =
             (Sprite){.image = load_image_from_disk(fixed_string("res\\sprites\\monster.png"), get_heap_allocator())};
-        sprites[SPRITE_experience] =
-            (Sprite){.image = load_image_from_disk(fixed_string("res\\sprites\\sword.png"), get_heap_allocator())};
         sprites[SPRITE_planet] =
             (Sprite){.image = load_image_from_disk(fixed_string("res\\sprites\\world.png"), get_heap_allocator())};
+        sprites[SPRITE_experience] =
+            (Sprite){.image = load_image_from_disk(fixed_string("res\\sprites\\sword.png"), get_heap_allocator())};
 
         for (SpriteID i = 0; i < SPRITE_MAX; i++) {
             Sprite *sprite = &sprites[i];
@@ -823,6 +825,8 @@ int entry(int argc, char **argv) {
                     world->ux_state = UX_lose;
                 }
                 world_frame.player = en;
+            } else if (en->is_valid && en->arch == ARCH_planet) {
+                world_frame.planet = en;
             }
         }
 
@@ -912,6 +916,9 @@ int entry(int argc, char **argv) {
                         set_world_space();
                         push_z_layer(layer_entity);
                         en->pos = v2_add(en->pos, v2_mulf(en->move_vec, en->move_speed * delta_t));
+                        en->pos = v2_add(en->pos, v2_mulf(v2_normalize(v2_sub(get_entity_midpoint(get_planet()),
+                                                                              get_entity_midpoint(en))),
+                                                          get_planet()->mass * delta_t));
                         render_sprite_entity(en);
                         if (en->health.current <= 0) {
                             en->color = v4(0, 0, 0, 0);
