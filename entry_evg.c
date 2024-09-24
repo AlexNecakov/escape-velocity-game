@@ -254,8 +254,16 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
                 en_2->pos.y <= en_1->pos.y + en_1->size.y) {
                 collision_detected = true;
             }
+        } else if (en_1->collider == COLL_circ && en_2->collider == COLL_circ) {
+            float dist = v2_dist(get_entity_midpoint(en_1), get_entity_midpoint(en_2));
+            float combRad = (en_1->size.x + en_2->size.y) / 2.0f;
+            if (dist <= combRad) {
+                collision_detected = true;
+            }
         }
     }
+    //
+    // log("collision %i", collision_detected);
     return collision_detected;
 }
 
@@ -387,7 +395,7 @@ void setup_player(Entity *en) {
     en->sprite_id = SPRITE_player;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    en->collider = COLL_rect;
+    en->collider = COLL_circ;
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->health.max = 100;
@@ -916,9 +924,15 @@ int entry(int argc, char **argv) {
                         set_world_space();
                         push_z_layer(layer_entity);
                         en->pos = v2_add(en->pos, v2_mulf(en->move_vec, en->move_speed * delta_t));
-                        en->pos = v2_add(en->pos, v2_mulf(v2_normalize(v2_sub(get_entity_midpoint(get_planet()),
-                                                                              get_entity_midpoint(en))),
-                                                          get_planet()->mass * delta_t));
+                        // en->pos = v2_add(en->pos, v2_mulf(v2_normalize(v2_sub(get_entity_midpoint(get_planet()),
+                        //                                                     get_entity_midpoint(en))),
+                        //                               get_planet()->mass * delta_t));
+                        for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
+                            Entity *other_en = &world->entities[j];
+                            if (i != j) {
+                                solid_entity_collision(en, other_en);
+                            }
+                        }
                         render_sprite_entity(en);
                         if (en->health.current <= 0) {
                             en->color = v4(0, 0, 0, 0);
@@ -936,6 +950,11 @@ int entry(int argc, char **argv) {
                             pop_z_layer();
                         }
 
+                        break;
+                    case ARCH_planet:
+                        set_world_space();
+                        push_z_layer(layer_entity);
+                        render_sprite_entity(en);
                         break;
                     case ARCH_weapon:
                         set_world_space();
