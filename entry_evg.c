@@ -143,26 +143,27 @@ typedef enum Collider {
 typedef struct Entity {
     bool is_valid;
     EntityArchetype arch;
+    Vector4 color;
+    bool is_line;
     bool is_sprite;
     bool is_attached_to_player;
     SpriteID sprite_id;
-    bool is_line;
-    Vector2 pos;
-    Vector2 size;
-    Vector4 color;
-    float angle;
+    float end_time;
     Collider collider;
-    bool is_static;
+    Vector2 size;
     Vector2 move_vec;
     Vector2 input_axis;
-    Bar health;
-    float power;
     float move_speed;
-    float end_time;
-    Bar experience;
-    float mass;
+    float64 mass;
+    float angle;
+    bool is_static;
+    Vector2 pos;
     Vector2 velocity;
     Vector2 acceleration;
+    Vector2 momentum;
+    Vector2 angular_momentum;
+    Vector2 angular_velocity;
+    float inertia;
 } Entity;
 
 void entity_apply_defaults(Entity *en) {}
@@ -396,10 +397,6 @@ void setup_player(Entity *en) {
     en->collider = COLL_circ;
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
-    en->health.max = 100;
-    en->health.current = en->health.max;
-    en->experience.max = 100;
-    en->experience.current = 0;
     en->mass = 5;
 }
 
@@ -412,9 +409,6 @@ void setup_monster(Entity *en) {
     en->collider = COLL_rect;
     en->color = COLOR_WHITE;
     en->move_speed = 25;
-    en->health.max = 50;
-    en->health.current = en->health.max;
-    en->power = 100;
 }
 
 void setup_sword(Entity *en) {
@@ -424,7 +418,6 @@ void setup_sword(Entity *en) {
     en->collider = COLL_line;
     en->color = COLOR_WHITE;
     en->size = v2(35, 2);
-    en->power = 500;
 }
 
 void setup_bullet(Entity *en) {
@@ -433,7 +426,6 @@ void setup_bullet(Entity *en) {
     en->collider = COLL_point;
     en->color = COLOR_WHITE;
     en->size = v2(2, 2);
-    en->power = 500;
     en->move_speed = 250;
 }
 
@@ -445,7 +437,6 @@ void setup_experience(Entity *en) {
     en->sprite_id = SPRITE_experience;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    en->power = 50;
 }
 
 void setup_wall(Entity *en, Vector2 size) {
@@ -467,7 +458,7 @@ void setup_planet(Entity *en) {
     en->sprite_id = SPRITE_planet;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    en->mass = 10000;
+    en->mass = 5.9722 * pow(10, 24);
 }
 
 void setup_world() {
@@ -827,9 +818,6 @@ int entry(int argc, char **argv) {
                 // after render
                 entity_destroy(en);
             } else if (en->is_valid && en->arch == ARCH_player) {
-                if (en->health.current < 0) {
-                    world->ux_state = UX_lose;
-                }
                 world_frame.player = en;
             } else if (en->is_valid && en->arch == ARCH_planet) {
                 world_frame.planet = en;
@@ -906,7 +894,7 @@ int entry(int argc, char **argv) {
             }
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
-            get_player()->move_vec = get_player()->input_axis;
+            // get_player()->move_vec = get_player()->input_axis;
             if (v2_length(get_player()->input_axis) != 0) {
                 get_player()->angle = v2_angle(v2(1, 0), get_player()->input_axis);
             }
@@ -921,145 +909,32 @@ int entry(int argc, char **argv) {
                     case ARCH_player:
                         set_world_space();
                         push_z_layer(layer_entity);
-                        en->pos = v2_add(en->pos, v2_mulf(en->move_vec, en->move_speed * delta_t));
-                        Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(get_planet()), get_entity_midpoint(en));
-                        float g_force = 10.0f * get_planet()->mass * en->mass / pow(v2_length(en_to_en_vec), 2.0f);
-                        en->pos = v2_add(en->pos, v2_mulf(v2_normalize(en_to_en_vec), g_force * delta_t));
-                        for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
-                            Entity *other_en = &world->entities[j];
-                            if (i != j) {
-                                solid_entity_collision(en, other_en);
+                        //: physics
+                        {
+                            Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(get_planet()), get_entity_midpoint(en));
+                            float g_mag = 6.67 * pow(10.0f, -11.0f) * get_planet()->mass * en->mass /
+                                          pow(v2_length(en_to_en_vec), 2.0f);
+                            // prevent black holing
+                            g_mag = clamp_top(g_mag, 9.8 * 10 * 10);
+                            Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
+                            en->momentum = v2_add(en->momentum, v2_mulf(g_force, delta_t));
+
+                            for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
+                                Entity *other_en = &world->entities[j];
+                                if (i != j) {
+                                    solid_entity_collision(en, other_en);
+                                }
                             }
+
+                            en->velocity = v2_divf(en->momentum, en->mass);
+                            en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                         }
                         render_sprite_entity(en);
-                        if (en->health.current <= 0) {
-                            en->color = v4(0, 0, 0, 0);
-                        }
-                        //: hp
-                        {
-                            push_z_layer(layer_ui_fg);
-                            Matrix4 xform = m4_scalar(1.0);
-                            xform = m4_translate(xform, v3(get_player()->pos.x, get_player()->pos.y, 0));
-                            // draw_rect_xform(xform, v2(10, -5), COLOR_RED);
-                            // draw_rect_xform(xform,
-                            // v2((get_player()->health.current /
-                            // get_player()->health.max) * 10.0f, -5),
-                            // COLOR_GREEN);
-                            pop_z_layer();
-                        }
-
                         break;
                     case ARCH_planet:
                         set_world_space();
                         push_z_layer(layer_entity);
                         render_sprite_entity(en);
-                        break;
-                    case ARCH_weapon:
-                        set_world_space();
-                        push_z_layer(layer_entity);
-                        for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
-                            Entity *other_en = &world->entities[j];
-                            if (i != j) {
-                                if (other_en->arch == ARCH_monster) {
-                                    if (check_entity_collision(en, other_en)) {
-                                        other_en->health.current -= (en->power * delta_t);
-                                    }
-                                }
-                            }
-                        }
-                        if (en->is_attached_to_player) {
-                            en->pos = get_entity_midpoint(get_player());
-                            en->angle = get_player()->angle;
-                        } else {
-                            en->pos = v2_add(en->pos, v2_mulf(en->move_vec, en->move_speed * delta_t));
-                        }
-
-                        if (get_player()->experience.current >= get_player()->experience.max) {
-                            get_player()->experience.current = 0;
-                            get_player()->experience.max = get_player()->experience.max * 1.1;
-                            get_player()->health.max = get_player()->health.max * 1.05;
-                            get_player()->health.current = get_player()->health.max;
-                            en->size = v2(en->size.x * 1.01, en->size.y);
-                        }
-                        render_line_entity(en);
-                        break;
-                    case ARCH_monster:
-                        set_world_space();
-                        push_z_layer(layer_entity);
-                        render_sprite_entity(en);
-                        en->move_vec = v2_normalize(v2_sub(get_player()->pos, en->pos));
-                        for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
-                            Entity *other_en = &world->entities[j];
-                            if (i != j) {
-                                if (other_en->arch == ARCH_monster) {
-                                    solid_entity_collision(en, other_en);
-                                } else if (other_en->arch == ARCH_player) {
-                                    if (check_entity_collision(en, other_en)) {
-                                        other_en->health.current -= (en->power * delta_t);
-                                        camera_shake(0.1);
-                                    }
-                                }
-                            }
-                        }
-                        en->pos = v2_add(en->pos, v2_mulf(en->move_vec, en->move_speed * delta_t));
-
-                        if (debug_render) {
-                            draw_line(en->pos, v2_add(en->pos, v2_mulf(en->move_vec, tile_width)), 1, COLOR_RED);
-                        }
-
-                        if (en->health.current <= 0) {
-                            particle_emit(en->pos, PFX_hit);
-                            en->color = v4(0, 0, 0, 0);
-                            en->is_valid = false;
-
-                            if (pct_chance(0.2)) {
-                                Entity *pickup_en = entity_create();
-                                setup_experience(pickup_en);
-                                pickup_en->pos = en->pos;
-                            }
-                        }
-
-                        string text = sprint(temp_allocator, STR("%f %f"), en->pos.x, en->pos.y);
-                        push_z_layer(layer_text);
-                        Matrix4 xform = m4_scalar(1.0);
-                        xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
-                        // draw_text_xform(font, text, font_height, xform,
-                        // v2(0.1, 0.1), COLOR_YELLOW);
-                        pop_z_layer();
-
-                        if (en->pos.x - camera_pos.x < -screen_width * 2 ||
-                            en->pos.y - camera_pos.y < -screen_height * 2 ||
-                            en->pos.x - camera_pos.x > screen_width * 2 ||
-                            en->pos.y - camera_pos.y > screen_height * 2) {
-                            en->color = v4(0, 0, 0, 0);
-                            en->is_valid = false;
-                            // log("destroyed offscreen monster at screen pos %f
-                            // %f", en->pos.x, en->pos.y);
-                        }
-                        break;
-                    case ARCH_pickup:
-                        set_world_space();
-                        push_z_layer(layer_entity);
-                        en->move_vec = v2_sub(get_entity_midpoint(get_player()), get_entity_midpoint(en));
-                        en->move_vec = v2_normalize(en->move_vec);
-
-                        if (fabsf(v2_dist(get_entity_midpoint(en), get_entity_midpoint(get_player()))) <
-                            tile_width * 2.0) {
-                            en->move_speed = 165;
-                        }
-                        if (check_entity_collision(en, get_player())) {
-                            get_player()->experience.current += en->power;
-                            en->color = v4(0, 0, 0, 0);
-                            en->is_valid = false;
-                            play_one_audio_clip(fixed_string("res\\sound\\pickup-001.wav"));
-                        }
-                        en->pos = v2_add(en->pos, v2_mulf(en->move_vec, en->move_speed * delta_t));
-                        render_sprite_entity(en);
-                        break;
-                    case ARCH_terrain:
-                        set_world_space();
-                        push_z_layer(layer_entity);
-                        render_rect_entity(en);
                         break;
                     default:
                         set_world_space();
@@ -1149,24 +1024,6 @@ int entry(int argc, char **argv) {
                     last_fps = frame_count;
                     frame_count = 0;
                     seconds_counter = 0.0;
-                    if (world->ux_state != UX_lose) {
-                        for (int i = 0; i < 0; i++) {
-                            Entity *monster_en = entity_create();
-                            setup_monster(monster_en);
-                            monster_en->pos = v2(get_random_int_in_range(5, 15) * tile_width, 0);
-                            monster_en->pos = v2_rotate_point_around_pivot(monster_en->pos, v2(0, 0),
-                                                                           get_random_float32_in_range(0, 2 * PI64));
-                            monster_en->pos = v2_add(monster_en->pos, get_player()->pos);
-                        }
-                        for (int i = 0; i < 0; i++) {
-                            Entity *bullet_en = entity_create();
-                            setup_bullet(bullet_en);
-                            play_one_audio_clip(fixed_string("res\\sound\\shot-001.wav"));
-                            bullet_en->move_vec = v2_rotate_point_around_pivot(
-                                v2(1, 0), v2(0, 0), get_random_float32_in_range(0, 2 * PI64));
-                            bullet_en->pos = v2_add(bullet_en->pos, get_player()->pos);
-                        }
-                    }
                 }
                 string text = STR("fps: %i time: %.2f");
                 text = sprint(temp_allocator, text, last_fps, world->time_elapsed);
