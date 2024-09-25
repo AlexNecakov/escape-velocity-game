@@ -262,8 +262,6 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
             }
         }
     }
-    //
-    // log("collision %i", collision_detected);
     return collision_detected;
 }
 
@@ -286,7 +284,7 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
     if (check_entity_collision(en_1, en_2)) {
         Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_1), get_entity_midpoint(en_2));
         if (!en_1->is_static) {
-            en_1->pos = v2_add(en_1->pos, v2_mulf(v2_normalize(en_to_en_vec), delta_t));
+            en_1->pos = v2_add(en_1->pos, v2_mulf(v2_normalize(en_to_en_vec), en_1->move_speed * delta_t));
         }
     }
 
@@ -469,7 +467,7 @@ void setup_planet(Entity *en) {
     en->sprite_id = SPRITE_planet;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    en->mass = 100;
+    en->mass = 10000;
 }
 
 void setup_world() {
@@ -924,9 +922,9 @@ int entry(int argc, char **argv) {
                         set_world_space();
                         push_z_layer(layer_entity);
                         en->pos = v2_add(en->pos, v2_mulf(en->move_vec, en->move_speed * delta_t));
-                        // en->pos = v2_add(en->pos, v2_mulf(v2_normalize(v2_sub(get_entity_midpoint(get_planet()),
-                        //                                                     get_entity_midpoint(en))),
-                        //                               get_planet()->mass * delta_t));
+                        Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(get_planet()), get_entity_midpoint(en));
+                        float g_force = 10.0f * get_planet()->mass * en->mass / pow(v2_length(en_to_en_vec), 2.0f);
+                        en->pos = v2_add(en->pos, v2_mulf(v2_normalize(en_to_en_vec), g_force * delta_t));
                         for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
                             Entity *other_en = &world->entities[j];
                             if (i != j) {
