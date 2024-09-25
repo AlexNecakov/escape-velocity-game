@@ -68,6 +68,7 @@ typedef enum Layer {
     layer_world = 10,
     layer_view = 15,
     layer_entity = 20,
+    layer_en_debug = 25,
     layer_ui_bg = 30,
     layer_ui_fg = 35,
     layer_text = 40,
@@ -155,12 +156,12 @@ typedef struct Entity {
     Vector2 input_axis;
     float move_speed;
     float64 mass;
-    float angle;
     bool is_static;
     Vector2 pos;
     Vector2 velocity;
     Vector2 last_momentum;
     Vector2 momentum;
+    Vector2 orientation;
     Vector2 angular_momentum;
     Vector2 angular_velocity;
     float inertia;
@@ -168,6 +169,7 @@ typedef struct Entity {
 
 void entity_apply_defaults(Entity *en) {}
 
+float get_entity_angle(Entity *en) { return v2_angle(en->orientation, v2(1, 0)); }
 Vector2 get_entity_midpoint(Entity *en) { return v2(en->pos.x + en->size.x / 2.0, en->pos.y + en->size.y / 2.0); }
 
 //: collision
@@ -204,13 +206,13 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
                 collision_detected = true;
             }
         } else if (en_1->collider == COLL_line && en_2->collider == COLL_line) {
-            Vector2 end_1 = get_line_endpoint(en_1->pos, en_1->size.x, to_radians(en_1->angle));
-            Vector2 end_2 = get_line_endpoint(en_2->pos, en_2->size.x, to_radians(en_2->angle));
+            Vector2 end_1 = get_line_endpoint(en_1->pos, en_1->size.x, to_radians(get_entity_angle(en_1)));
+            Vector2 end_2 = get_line_endpoint(en_2->pos, en_2->size.x, to_radians(get_entity_angle(en_2)));
             if (get_line_intersection(en_1->pos, end_1, en_2->pos, end_2).z) {
                 collision_detected = true;
             }
         } else if (en_1->collider == COLL_line && en_2->collider == COLL_rect) {
-            Vector2 end_1 = get_line_endpoint(en_1->pos, en_1->size.x, to_radians(en_1->angle));
+            Vector2 end_1 = get_line_endpoint(en_1->pos, en_1->size.x, to_radians(get_entity_angle(en_1)));
             if (get_line_intersection(en_1->pos, end_1, en_2->pos, v2(en_2->pos.x + en_2->size.x, en_2->pos.y)).z) {
                 collision_detected = true;
             }
@@ -228,7 +230,7 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
                 collision_detected = true;
             }
         } else if (en_1->collider == COLL_rect && en_2->collider == COLL_line) {
-            Vector2 end_2 = get_line_endpoint(en_2->pos, en_2->size.x, to_radians(en_2->angle));
+            Vector2 end_2 = get_line_endpoint(en_2->pos, en_2->size.x, to_radians(get_entity_angle(en_2)));
             if (get_line_intersection(en_2->pos, end_2, en_1->pos, v2(en_1->pos.x + en_1->size.x, en_1->pos.y)).z) {
                 collision_detected = true;
             }
@@ -287,12 +289,19 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
         Vector2 force = v2_divf(v2_sub(en_1->momentum, en_1->last_momentum), delta_t);
         float mag_in_dir = v2_dot(v2_normalize(en_to_en_vec), v2_normalize(force));
         mag_in_dir = 1;
-        Vector2 repelling_force = v2_mulf(v2_normalize(en_to_en_vec), mag_in_dir * v2_length(force) * -1.0f);
-        draw_line(get_entity_midpoint(en_1), v2_add(get_entity_midpoint(en_1), v2_mulf(repelling_force, 0.05)), 1,
+        Vector2 normal_force = v2_mulf(v2_normalize(en_to_en_vec), mag_in_dir * v2_length(force) * -1.0f);
+        push_z_layer(layer_en_debug);
+        draw_line(get_entity_midpoint(en_1), v2_add(get_entity_midpoint(en_1), v2_mulf(normal_force, 0.05)), 1,
                   COLOR_RED);
-        log("%f %f : %f %f", force.x, force.y, repelling_force.x, repelling_force.y);
+        pop_z_layer();
+        log("%f %f : %f %f", force.x, force.y, normal_force.x, normal_force.y);
 
-        en_1->momentum = v2_add(en_1->momentum, v2_mulf(repelling_force, delta_t));
+        Vector2 impact_force = v2_mulf(en_1->velocity, -1.0f * en_1->mass / delta_t);
+        push_z_layer(layer_en_debug);
+        draw_line(get_entity_midpoint(en_1), v2_add(get_entity_midpoint(en_1), v2_mulf(impact_force, 0.05)), 1,
+                  COLOR_BLUE);
+        en_1->momentum = v2_add(en_1->momentum, v2_mulf(impact_force, delta_t));
+        en_1->momentum = v2_add(en_1->momentum, v2_mulf(normal_force, delta_t));
 
         log("%f %f", en_1->momentum.x, en_1->momentum.y);
         en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
@@ -481,7 +490,7 @@ void setup_world() {
 
     Entity *player_en = entity_create();
     setup_player(player_en);
-    player_en->pos = v2(0, planet_en->size.y + player_en->size.y);
+    player_en->pos = v2(0, planet_en->size.y + 9 * player_en->size.y);
 
     // Entity* weapon_en = entity_create();
     // setup_sword(weapon_en);
@@ -530,7 +539,7 @@ void render_rect_entity(Entity *en) {
 
 void render_line_entity(Entity *en) {
     if (en->is_valid) {
-        Vector2 endpoint = get_line_endpoint(en->pos, en->size.x, to_radians(en->angle));
+        Vector2 endpoint = get_line_endpoint(en->pos, en->size.x, to_radians(get_entity_angle(en)));
         draw_line(en->pos, endpoint, en->size.y, en->color);
     }
 }
@@ -903,10 +912,9 @@ int entry(int argc, char **argv) {
             }
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
-            // get_player()->move_vec = get_player()->input_axis;
-            if (v2_length(get_player()->input_axis) != 0) {
-                get_player()->angle = v2_angle(v2(1, 0), get_player()->input_axis);
-            }
+            float angle = v2_angle(get_player()->orientation, get_player()->input_axis);
+            Vector2 rotated_vec = v2(cos(angle), sin(angle));
+            get_player()->move_vec = v2_mulf(rotated_vec, get_player()->move_speed);
         }
 
         //: entity loop
@@ -921,28 +929,34 @@ int entry(int argc, char **argv) {
                         //: physics
                         {
                             Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(get_planet()), get_entity_midpoint(en));
+                            Vector2 down_vec = v2_normalize(en_to_en_vec);
                             float g_mag = 6.67 * pow(10.0f, -11.0f) * get_planet()->mass * en->mass /
                                           pow(v2_length(en_to_en_vec), 2.0f);
-                            if (check_entity_collision(en, get_planet())) {
-                                g_mag = 0;
-                            }
                             // prevent black holing
                             g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
-                            g_mag = clamp_bottom(g_mag, -9.8 * 10 * 20);
+                            // g_mag = clamp_bottom(g_mag, -9.8 * 10 * 20);
                             Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
+                            push_z_layer(layer_en_debug);
                             draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(g_force, 0.05)),
                                       1, COLOR_GREEN);
+                            pop_z_layer();
                             en->last_momentum = en->momentum;
                             en->momentum = v2_add(en->momentum, v2_mulf(g_force, delta_t));
+                            push_z_layer(layer_en_debug);
+                            draw_line(get_entity_midpoint(en),
+                                      v2_add(get_entity_midpoint(en), v2_mulf(en->move_vec, 0.05)), 1, COLOR_YELLOW);
+                            pop_z_layer();
+                            en->momentum = v2_add(en->momentum, v2_mulf(en->move_vec, delta_t));
                             en->velocity = v2_divf(en->momentum, en->mass);
 
                             for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
                                 Entity *other_en = &world->entities[j];
                                 if (i != j) {
-                                    // solid_entity_collision(en, other_en);
+                                    solid_entity_collision(en, other_en);
                                 }
                             }
 
+                            en->orientation = v2(-down_vec.y, down_vec.x);
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                         }
                         render_sprite_entity(en);
