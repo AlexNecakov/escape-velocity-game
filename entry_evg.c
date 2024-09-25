@@ -159,7 +159,7 @@ typedef struct Entity {
     bool is_static;
     Vector2 pos;
     Vector2 velocity;
-    Vector2 acceleration;
+    Vector2 last_momentum;
     Vector2 momentum;
     Vector2 angular_momentum;
     Vector2 angular_velocity;
@@ -270,12 +270,12 @@ bool check_entity_will_collide(Entity *en_1, Entity *en_2) {
     bool collision_detected = false;
 
     // check next frame based on current move vecs
-    en_1->pos = v2_add(en_1->pos, v2_mulf(en_1->move_vec, en_1->move_speed * delta_t));
-    en_2->pos = v2_add(en_2->pos, v2_mulf(en_2->move_vec, en_2->move_speed * delta_t));
+    en_1->pos = v2_add(en_1->pos, v2_mulf(en_1->velocity, delta_t));
+    en_2->pos = v2_add(en_2->pos, v2_mulf(en_2->velocity, delta_t));
     collision_detected = check_entity_collision(en_1, en_2);
 
-    en_1->pos = v2_sub(en_1->pos, v2_mulf(en_1->move_vec, en_1->move_speed * delta_t));
-    en_2->pos = v2_sub(en_2->pos, v2_mulf(en_2->move_vec, en_2->move_speed * delta_t));
+    en_1->pos = v2_sub(en_1->pos, v2_mulf(en_1->velocity, delta_t));
+    en_2->pos = v2_sub(en_2->pos, v2_mulf(en_2->velocity, delta_t));
 
     return collision_detected;
 }
@@ -283,10 +283,19 @@ bool check_entity_will_collide(Entity *en_1, Entity *en_2) {
 void solid_entity_collision(Entity *en_1, Entity *en_2) {
     // repel out of other entity if dynamic solid
     if (check_entity_collision(en_1, en_2)) {
-        Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_1), get_entity_midpoint(en_2));
-        if (!en_1->is_static) {
-            en_1->pos = v2_add(en_1->pos, v2_mulf(v2_normalize(en_to_en_vec), en_1->move_speed * delta_t));
-        }
+        Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_2), get_entity_midpoint(en_1));
+        Vector2 force = v2_divf(v2_sub(en_1->momentum, en_1->last_momentum), delta_t);
+        float mag_in_dir = v2_dot(v2_normalize(en_to_en_vec), v2_normalize(force));
+        mag_in_dir = 1;
+        Vector2 repelling_force = v2_mulf(v2_normalize(en_to_en_vec), mag_in_dir * v2_length(force) * -1.0f);
+        draw_line(get_entity_midpoint(en_1), v2_add(get_entity_midpoint(en_1), v2_mulf(repelling_force, 0.05)), 1,
+                  COLOR_RED);
+        log("%f %f : %f %f", force.x, force.y, repelling_force.x, repelling_force.y);
+
+        en_1->momentum = v2_add(en_1->momentum, v2_mulf(repelling_force, delta_t));
+
+        log("%f %f", en_1->momentum.x, en_1->momentum.y);
+        en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
     }
 
     Vector2 temp_vec_1 = en_1->move_vec;
@@ -753,7 +762,7 @@ int entry(int argc, char **argv) {
     window.point_height = 720;
     window.x = 200;
     window.y = 200;
-    window.clear_color = v4(0, 0.7, .3, 1);
+    window.clear_color = v4(0.7, 0.7, 0.7, 1);
     window.force_topmost = false;
 
     seed_for_random = rdtsc();
@@ -914,19 +923,26 @@ int entry(int argc, char **argv) {
                             Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(get_planet()), get_entity_midpoint(en));
                             float g_mag = 6.67 * pow(10.0f, -11.0f) * get_planet()->mass * en->mass /
                                           pow(v2_length(en_to_en_vec), 2.0f);
+                            if (check_entity_collision(en, get_planet())) {
+                                g_mag = 0;
+                            }
                             // prevent black holing
-                            g_mag = clamp_top(g_mag, 9.8 * 10 * 10);
+                            g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
+                            g_mag = clamp_bottom(g_mag, -9.8 * 10 * 20);
                             Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
+                            draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(g_force, 0.05)),
+                                      1, COLOR_GREEN);
+                            en->last_momentum = en->momentum;
                             en->momentum = v2_add(en->momentum, v2_mulf(g_force, delta_t));
+                            en->velocity = v2_divf(en->momentum, en->mass);
 
                             for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
                                 Entity *other_en = &world->entities[j];
                                 if (i != j) {
-                                    solid_entity_collision(en, other_en);
+                                    // solid_entity_collision(en, other_en);
                                 }
                             }
 
-                            en->velocity = v2_divf(en->momentum, en->mass);
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                         }
                         render_sprite_entity(en);
