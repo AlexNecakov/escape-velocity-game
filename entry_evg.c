@@ -294,7 +294,6 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
         draw_line(get_entity_midpoint(en_1), v2_add(get_entity_midpoint(en_1), v2_mulf(normal_force, 0.05)), 1,
                   COLOR_RED);
         pop_z_layer();
-        log("%f %f : %f %f", force.x, force.y, normal_force.x, normal_force.y);
 
         Vector2 impact_force = v2_mulf(en_1->velocity, -1.0f * en_1->mass / delta_t);
         push_z_layer(layer_en_debug);
@@ -303,7 +302,6 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(impact_force, delta_t));
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(normal_force, delta_t));
 
-        log("%f %f", en_1->momentum.x, en_1->momentum.y);
         en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
     }
 
@@ -912,8 +910,9 @@ int entry(int argc, char **argv) {
             }
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
-            float angle = v2_angle(get_player()->orientation, get_player()->input_axis);
-            Vector2 rotated_vec = v2(cos(angle), sin(angle));
+            float angle = -1 * get_entity_angle(get_player()) + 90;
+            log("%f angle", angle);
+            Vector2 rotated_vec = v2(cos(angle) * get_player()->input_axis.x, sin(angle) * get_player()->input_axis.y);
             get_player()->move_vec = v2_mulf(rotated_vec, get_player()->move_speed);
         }
 
@@ -942,11 +941,14 @@ int entry(int argc, char **argv) {
                             pop_z_layer();
                             en->last_momentum = en->momentum;
                             en->momentum = v2_add(en->momentum, v2_mulf(g_force, delta_t));
-                            push_z_layer(layer_en_debug);
+                            push_z_layer(layer_en_debug + 1);
                             draw_line(get_entity_midpoint(en),
                                       v2_add(get_entity_midpoint(en), v2_mulf(en->move_vec, 0.05)), 1, COLOR_YELLOW);
+                            draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(down_vec, 5)), 1,
+                                      COLOR_PURPLE);
                             pop_z_layer();
                             en->momentum = v2_add(en->momentum, v2_mulf(en->move_vec, delta_t));
+
                             en->velocity = v2_divf(en->momentum, en->mass);
 
                             for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
@@ -956,7 +958,8 @@ int entry(int argc, char **argv) {
                                 }
                             }
 
-                            en->orientation = v2(-down_vec.y, down_vec.x);
+                            // log("%f %f", en->momentum.x, en->momentum.y);
+                            en->orientation = down_vec;
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                         }
                         render_sprite_entity(en);
