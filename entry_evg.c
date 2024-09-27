@@ -910,9 +910,10 @@ int entry(int argc, char **argv) {
             }
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
-            float angle = -1 * get_entity_angle(get_player()) + 90;
-            log("%f angle", angle);
+            float angle = get_entity_angle(get_player());
+            // log("%f raw angle, +90 = %f", get_entity_angle(get_player()), angle);
             Vector2 rotated_vec = v2(cos(angle) * get_player()->input_axis.x, sin(angle) * get_player()->input_axis.y);
+            log("%f %f", rotated_vec.x, rotated_vec.y);
             get_player()->move_vec = v2_mulf(rotated_vec, get_player()->move_speed);
         }
 
