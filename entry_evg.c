@@ -474,7 +474,7 @@ void setup_planet(Entity *en) {
     en->sprite_id = SPRITE_planet;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    en->mass = 5.9722 * pow(10, 24);
+    en->mass = 5.9722 * pow(10, 12);
 }
 
 void setup_world() {
@@ -488,7 +488,7 @@ void setup_world() {
 
     Entity *player_en = entity_create();
     setup_player(player_en);
-    player_en->pos = v2(0, planet_en->size.y + 9 * player_en->size.y);
+    player_en->pos = v2(0, planet_en->size.y + 900 * player_en->size.y);
 
     // Entity* weapon_en = entity_create();
     // setup_sword(weapon_en);
@@ -769,7 +769,7 @@ int entry(int argc, char **argv) {
     window.point_height = 720;
     window.x = 200;
     window.y = 200;
-    window.clear_color = v4(0.7, 0.7, 0.7, 1);
+    window.clear_color = v4(0.07, 0.07, 0.07, 1);
     window.force_topmost = false;
 
     seed_for_random = rdtsc();
@@ -911,10 +911,7 @@ int entry(int argc, char **argv) {
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
             float angle = get_entity_angle(get_player());
-            // log("%f raw angle, +90 = %f", get_entity_angle(get_player()), angle);
-            Vector2 rotated_vec = v2(cos(angle) * get_player()->input_axis.x, sin(angle) * get_player()->input_axis.y);
-            log("%f %f", rotated_vec.x, rotated_vec.y);
-            get_player()->move_vec = v2_mulf(rotated_vec, get_player()->move_speed);
+            get_player()->move_vec = v2_mulf(get_player()->input_axis, get_player()->move_speed);
         }
 
         //: entity loop
