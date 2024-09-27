@@ -148,6 +148,7 @@ typedef struct Entity {
     bool is_line;
     bool is_sprite;
     bool is_attached_to_player;
+    bool is_thrusting;
     SpriteID sprite_id;
     float end_time;
     Collider collider;
@@ -413,7 +414,7 @@ void setup_player(Entity *en) {
     en->collider = COLL_circ;
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
-    en->mass = 5;
+    en->mass = 5.9722 * pow(10, 3);
 }
 
 void setup_monster(Entity *en) {
@@ -473,8 +474,8 @@ void setup_planet(Entity *en) {
     en->color = COLOR_WHITE;
     en->sprite_id = SPRITE_planet;
     Sprite *sprite = get_sprite(en->sprite_id);
-    en->size = get_sprite_size(sprite);
-    en->mass = 5.9722 * pow(10, 12);
+    en->size = v2(256, 256);
+    en->mass = 5.9722 * pow(10, 20);
 }
 
 void setup_world() {
@@ -488,7 +489,7 @@ void setup_world() {
 
     Entity *player_en = entity_create();
     setup_player(player_en);
-    player_en->pos = v2(0, planet_en->size.y + 900 * player_en->size.y);
+    player_en->pos = v2(0, planet_en->size.y + 100 * player_en->size.y);
 
     // Entity* weapon_en = entity_create();
     // setup_sword(weapon_en);
@@ -518,7 +519,7 @@ void render_sprite_entity(Entity *en) {
         Sprite *sprite = get_sprite(en->sprite_id);
         Matrix4 xform = m4_scalar(1.0);
         xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
-        draw_image_xform(sprite->image, xform, get_sprite_size(sprite), en->color);
+        draw_image_xform(sprite->image, xform, en->size, en->color);
     }
 
     if (debug_render) {
@@ -853,7 +854,7 @@ int entry(int argc, char **argv) {
             float cam_shake = clamp_top(pow(camera_trauma, 2), 1);
 
             Vector2 target_pos = get_player()->pos;
-            animate_v2_to_target(&camera_pos, target_pos, 30.0f);
+            animate_v2_to_target(&camera_pos, target_pos, v2_length(get_player()->velocity) * 0.99);
 
             world_frame.world_view = m4_identity();
 
@@ -907,11 +908,17 @@ int entry(int argc, char **argv) {
                 if (is_key_down('W')) {
                     get_player()->input_axis.y += 1.0;
                 }
+                if (is_key_down(KEY_SPACEBAR)) {
+                    get_player()->is_thrusting = true;
+                } else {
+                    get_player()->is_thrusting = false;
+                }
             }
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
             float angle = get_entity_angle(get_player());
-            get_player()->move_vec = v2_mulf(get_player()->input_axis, get_player()->move_speed);
+            float thrust_mult = (get_player()->is_thrusting) ? 100 : 1;
+            get_player()->move_vec = v2_mulf(get_player()->input_axis, thrust_mult * get_player()->move_speed);
         }
 
         //: entity loop
@@ -1056,8 +1063,8 @@ int entry(int argc, char **argv) {
                     frame_count = 0;
                     seconds_counter = 0.0;
                 }
-                string text = STR("fps: %i time: %.2f");
-                text = sprint(temp_allocator, text, last_fps, world->time_elapsed);
+                string text = STR("fps: %i time: %.2f speed: %.2f");
+                text = sprint(temp_allocator, text, last_fps, world->time_elapsed, v2_length(get_player()->velocity));
                 set_screen_space();
                 push_z_layer(layer_text);
                 Matrix4 xform = m4_scalar(1.0);
