@@ -414,7 +414,7 @@ void setup_player(Entity *en) {
     en->collider = COLL_circ;
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
-    en->mass = 5.9722 * pow(10, 3);
+    en->mass = 5.9722;
 }
 
 void setup_monster(Entity *en) {
@@ -917,7 +917,7 @@ int entry(int argc, char **argv) {
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
             float angle = get_entity_angle(get_player());
-            float thrust_mult = (get_player()->is_thrusting) ? 100 : 1;
+            float thrust_mult = (get_player()->is_thrusting) ? 14 : 1;
             get_player()->move_vec = v2_mulf(get_player()->input_axis, thrust_mult * get_player()->move_speed);
         }
 
