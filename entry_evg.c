@@ -825,6 +825,11 @@ int entry(int argc, char **argv) {
         world_frame = (WorldFrame){0};
         float64 now = os_get_elapsed_seconds();
         delta_t = now - last_time;
+// debug clamp dt for breakpoints
+#if CONFIGURATION == DEBUG
+        { clamp_top(delta_t, 0.5); }
+#endif
+
         last_time = now;
 
         float zoom = 5.3;
@@ -952,8 +957,9 @@ int entry(int argc, char **argv) {
                             push_z_layer(layer_en_debug + 1);
                             draw_line(get_entity_midpoint(en),
                                       v2_add(get_entity_midpoint(en), v2_mulf(en->move_vec, 0.05)), 1, COLOR_YELLOW);
-                            draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(down_vec, 5)), 1,
-                                      COLOR_PURPLE);
+                            // draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(down_vec, 5)),
+                            // 1,
+                            //         COLOR_PURPLE);
                             pop_z_layer();
                             en->momentum = v2_add(en->momentum, v2_mulf(en->move_vec, delta_t));
 
