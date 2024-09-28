@@ -165,7 +165,7 @@ typedef struct Entity {
     Vector2 orientation;
     Vector2 angular_momentum;
     Vector2 angular_velocity;
-    float inertia;
+    Bar energy;
 } Entity;
 
 void entity_apply_defaults(Entity *en) {}
@@ -415,6 +415,8 @@ void setup_player(Entity *en) {
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->mass = 5.9722;
+    en->energy.max = 100;
+    en->energy.current = en->energy.max;
 }
 
 void setup_monster(Entity *en) {
@@ -917,8 +919,9 @@ int entry(int argc, char **argv) {
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
             float angle = get_entity_angle(get_player());
-            float thrust_mult = (get_player()->is_thrusting) ? 14 : 1;
+            float thrust_mult = (get_player()->is_thrusting && get_player()->energy.current > 0) ? 14 : 1;
             get_player()->move_vec = v2_mulf(get_player()->input_axis, thrust_mult * get_player()->move_speed);
+            get_player()->energy.rate = -1 * thrust_mult * v2_length(get_player()->input_axis);
         }
 
         //: entity loop
@@ -966,6 +969,7 @@ int entry(int argc, char **argv) {
                             // log("%f %f", en->momentum.x, en->momentum.y);
                             en->orientation = down_vec;
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
+                            en->energy.current += en->energy.rate * delta_t;
                         }
                         render_sprite_entity(en);
                         break;
@@ -1037,16 +1041,9 @@ int entry(int argc, char **argv) {
             push_z_layer(layer_ui_fg);
             Matrix4 xform = m4_scalar(1.0);
             xform = m4_translate(xform, v3(0, screen_height - 10, 0));
-            // draw_rect_xform(xform, v2(screen_width, 10), COLOR_GREY);
-            // draw_rect_xform(xform, v2((get_player()->experience.current /
-            // get_player()->experience.max) * screen_width, 10), COLOR_RED);
-            xform = m4_translate(xform, v3(30, 0, 0));
-            // draw_rect_xform(xform, v2(25, 0.5), COLOR_GREY);
-            // draw_rect_xform(xform, v2((get_player()->health.current /
-            // get_player()->health.max) * 25.0f, 0.5), COLOR_GREEN);
-            // draw_text_xform(font, sprint(temp_allocator, STR("%.0f/%.0f"),
-            // get_player()->health.current, get_player()->health.max),
-            // font_height, xform, v2(0.1, 0.1), COLOR_WHITE);
+            draw_rect_xform(xform, v2(25, 0.5), COLOR_GREY);
+            draw_rect_xform(xform, v2((get_player()->energy.current / get_player()->energy.max) * 25.0f, 0.5),
+                            COLOR_GREEN);
             pop_z_layer();
         }
 
