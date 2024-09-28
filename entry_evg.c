@@ -162,15 +162,15 @@ typedef struct Entity {
     Vector2 velocity;
     Vector2 last_momentum;
     Vector2 momentum;
-    Vector2 orientation;
-    Vector2 angular_momentum;
-    Vector2 angular_velocity;
+    float orientation;
+    float angular_momentum;
+    float angular_velocity;
     Bar energy;
 } Entity;
 
 void entity_apply_defaults(Entity *en) {}
 
-float get_entity_angle(Entity *en) { return v2_angle(en->orientation, v2(1, 0)); }
+float get_entity_angle(Entity *en) { return en->orientation; }
 Vector2 get_entity_midpoint(Entity *en) { return v2(en->pos.x + en->size.x / 2.0, en->pos.y + en->size.y / 2.0); }
 
 //: collision
@@ -917,6 +917,7 @@ int entry(int argc, char **argv) {
                 }
                 if (is_key_down(KEY_SPACEBAR)) {
                     get_player()->is_thrusting = true;
+                    // play_one_audio_clip(fixed_string("res\\sound\\burn.wav"));
                 } else {
                     get_player()->is_thrusting = false;
                 }
@@ -973,9 +974,11 @@ int entry(int argc, char **argv) {
                             }
 
                             // log("%f %f", en->momentum.x, en->momentum.y);
-                            en->orientation = down_vec;
+                            float torque = 0;
+                            en->angular_velocity += delta_t * torque / en->mass;
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                             en->energy.current += en->energy.rate * delta_t;
+                            en->orientation += en->angular_velocity * delta_t;
                         }
                         render_sprite_entity(en);
                         break;
