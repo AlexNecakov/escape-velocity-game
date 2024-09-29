@@ -287,15 +287,15 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
                 testX = en_1->pos.x + en_1->size.x; // right edge
 
             if (get_entity_midpoint(en_2).y < en_1->pos.y)
-                testY = en_1->pos.y; // top edge
+                testY = en_1->pos.y; // bottom edge
             else if (get_entity_midpoint(en_2).y > en_1->pos.y + en_1->size.y)
-                testY = en_1->pos.y + en_1->size.y; // bottom edge
+                testY = en_1->pos.y + en_1->size.y; // top edge
 
             float distX = get_entity_midpoint(en_2).x - testX;
             float distY = get_entity_midpoint(en_2).y - testY;
             float distance = sqrt((distX * distX) + (distY * distY));
 
-            if (distance <= en_2->size.x) {
+            if (distance <= en_2->size.x / 2.0f) {
                 collision_detected = true;
             }
         } else if (en_2->collider == COLL_rect && en_1->collider == COLL_circ) {
@@ -307,15 +307,15 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
                 testX = en_2->pos.x + en_2->size.x; // right edge
 
             if (get_entity_midpoint(en_1).y < en_2->pos.y)
-                testY = en_2->pos.y; // top edge
+                testY = en_2->pos.y; // bottom edge
             else if (get_entity_midpoint(en_1).y > en_2->pos.y + en_2->size.y)
-                testY = en_2->pos.y + en_2->size.y; // bottom edge
+                testY = en_2->pos.y + en_2->size.y; // top edge
 
             float distX = get_entity_midpoint(en_1).x - testX;
             float distY = get_entity_midpoint(en_1).y - testY;
             float distance = sqrt((distX * distX) + (distY * distY));
 
-            if (distance <= en_1->size.x) {
+            if (distance <= en_1->size.x / 2.0f) {
                 collision_detected = true;
             }
         }
@@ -360,20 +360,6 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
 
         en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
     }
-
-    Vector2 temp_vec_1 = en_1->move_vec;
-
-    en_1->move_vec = v2_normalize(v2(temp_vec_1.x, 0));
-    if (check_entity_will_collide(en_1, en_2)) {
-        temp_vec_1.x = 0;
-    }
-
-    en_1->move_vec = v2_normalize(v2(0, temp_vec_1.y));
-    if (check_entity_will_collide(en_1, en_2)) {
-        temp_vec_1.y = 0;
-    }
-
-    en_1->move_vec = v2_normalize(temp_vec_1);
 }
 
 bool check_ray_collision(Vector2 ray, Entity *en_1, Entity *en_2) {
@@ -466,7 +452,7 @@ void setup_player(Entity *en) {
     en->sprite_id = SPRITE_player;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    en->collider = COLL_circ;
+    en->collider = COLL_rect;
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->mass = 5.9722;
@@ -577,11 +563,14 @@ void render_sprite_entity(Entity *en) {
         Matrix4 xform = m4_scalar(1.0);
         xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
         draw_image_xform(sprite->image, xform, en->size, en->color);
-    }
-
-    if (debug_render) {
-        // draw_text(font, sprint(temp_allocator, STR("%f %f"), en->pos.x,
-        // en->pos.y), font_height, en->pos, v2(0.1, 0.1), COLOR_WHITE);
+        if (debug_render) {
+            if (en->collider == COLL_rect) {
+                draw_rect_xform(xform, en->size, v4(en->color.r, en->color.g, en->color.b, 0.7));
+            }
+            if (en->collider == COLL_circ) {
+                draw_circle_xform(xform, en->size, v4(en->color.r, en->color.g, en->color.b, 0.7));
+            }
+        }
     }
 }
 
