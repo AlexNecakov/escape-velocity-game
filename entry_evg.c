@@ -1150,7 +1150,7 @@ int entry(int argc, char **argv) {
 #endif
     }
 
-    world_save_to_disk();
+    // world_save_to_disk();
 
     return 0;
 }
