@@ -264,8 +264,63 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
             if (dist <= combRad) {
                 collision_detected = true;
             }
+        } else if (en_1->collider == COLL_point && en_2->collider == COLL_point) {
+            if (en_1->pos.x == en_2->pos.x && en_1->pos.y == en_2->pos.y) {
+                collision_detected = true;
+            }
+        } else if (en_1->collider == COLL_point && en_2->collider == COLL_circ) {
+            float dist = v2_dist(en_1->pos, get_entity_midpoint(en_2));
+            if (dist <= en_2->size.x) {
+                collision_detected = true;
+            }
+        } else if (en_2->collider == COLL_point && en_1->collider == COLL_circ) {
+            float dist = v2_dist(en_2->pos, get_entity_midpoint(en_1));
+            if (dist <= en_1->size.x) {
+                collision_detected = true;
+            }
+        } else if (en_1->collider == COLL_rect && en_2->collider == COLL_circ) {
+            float testX = get_entity_midpoint(en_2).x;
+            float testY = get_entity_midpoint(en_2).y;
+            if (get_entity_midpoint(en_2).x < en_1->pos.x)
+                testX = en_1->pos.x; // left edge
+            else if (get_entity_midpoint(en_2).x > en_1->pos.x + en_1->size.x)
+                testX = en_1->pos.x + en_1->size.x; // right edge
+
+            if (get_entity_midpoint(en_2).y < en_1->pos.y)
+                testY = en_1->pos.y; // top edge
+            else if (get_entity_midpoint(en_2).y > en_1->pos.y + en_1->size.y)
+                testY = en_1->pos.y + en_1->size.y; // bottom edge
+
+            float distX = get_entity_midpoint(en_2).x - testX;
+            float distY = get_entity_midpoint(en_2).y - testY;
+            float distance = sqrt((distX * distX) + (distY * distY));
+
+            if (distance <= en_2->size.x) {
+                collision_detected = true;
+            }
+        } else if (en_2->collider == COLL_rect && en_1->collider == COLL_circ) {
+            float testX = get_entity_midpoint(en_1).x;
+            float testY = get_entity_midpoint(en_1).y;
+            if (get_entity_midpoint(en_1).x < en_2->pos.x)
+                testX = en_2->pos.x; // left edge
+            else if (get_entity_midpoint(en_1).x > en_2->pos.x + en_2->size.x)
+                testX = en_2->pos.x + en_2->size.x; // right edge
+
+            if (get_entity_midpoint(en_1).y < en_2->pos.y)
+                testY = en_2->pos.y; // top edge
+            else if (get_entity_midpoint(en_1).y > en_2->pos.y + en_2->size.y)
+                testY = en_2->pos.y + en_2->size.y; // bottom edge
+
+            float distX = get_entity_midpoint(en_1).x - testX;
+            float distY = get_entity_midpoint(en_1).y - testY;
+            float distance = sqrt((distX * distX) + (distY * distY));
+
+            if (distance <= en_1->size.x) {
+                collision_detected = true;
+            }
         }
     }
+
     return collision_detected;
 }
 
@@ -958,8 +1013,8 @@ int entry(int argc, char **argv) {
                             push_z_layer(layer_en_debug + 1);
                             draw_line(get_entity_midpoint(en),
                                       v2_add(get_entity_midpoint(en), v2_mulf(en->move_vec, 0.05)), 1, COLOR_YELLOW);
-                            // draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(down_vec, 5)),
-                            // 1,
+                            // draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(down_vec,
+                            // 5)), 1,
                             //         COLOR_PURPLE);
                             pop_z_layer();
                             en->momentum = v2_add(en->momentum, v2_mulf(en->move_vec, delta_t));
