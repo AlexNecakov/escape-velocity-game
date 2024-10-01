@@ -138,7 +138,7 @@ typedef enum Collider {
     COLL_line,
     COLL_rect,
     COLL_circ,
-    COLL_complex,
+    COLL_polygon,
 } Collider;
 
 typedef struct Entity {
@@ -159,6 +159,7 @@ typedef struct Entity {
     float64 mass;
     Vector2 center_mass;
     bool is_static;
+    // anchored bottom left of "square"
     Vector2 pos;
     Vector2 velocity;
     Vector2 last_momentum;
@@ -171,16 +172,9 @@ typedef struct Entity {
 
 void entity_apply_defaults(Entity *en) {}
 
-float get_entity_angle(Entity *en) { return en->orientation; }
 Vector2 get_entity_midpoint(Entity *en) { return v2(en->pos.x + en->size.x / 2.0, en->pos.y + en->size.y / 2.0); }
 
 //: collision
-Vector2 get_line_endpoint(Vector2 origin, float r, float radians) {
-    Vector2 endpoint = v2_add(origin, v2(r, 0));
-    endpoint = v2_rotate_point_around_pivot(endpoint, origin, radians);
-    return endpoint;
-}
-
 Vector3 get_line_intersection(Vector2 v1_start, Vector2 v1_end, Vector2 v2_start, Vector2 v2_end) {
     float uA =
         ((v2_end.x - v2_start.x) * (v1_start.y - v2_start.y) - (v2_end.y - v2_start.y) * (v1_start.x - v2_start.x)) /
@@ -199,7 +193,74 @@ Vector3 get_line_intersection(Vector2 v1_start, Vector2 v1_end, Vector2 v2_start
     }
 }
 
-bool point_point_collision(Entity *en_1, Entity *en_2) { return false; }
+bool point_point_collision(Entity *en_p1, Entity *en_p2) {
+    bool collision_detected = false;
+    if (en_p1->pos.x == en_p2->pos.x && en_p1->pos.y == en_p2->pos.y) {
+        collision_detected = true;
+    }
+    return collision_detected;
+}
+
+bool point_circle_collision(Entity *en_p, Entity *en_c) {
+    bool collision_detected = false;
+    float dist = v2_dist(en_p->pos, get_entity_midpoint(en_c));
+    if (dist <= en_c->size.x) {
+        collision_detected = true;
+    }
+    return collision_detected;
+}
+
+bool circle_circle_collision(Entity *en_c1, Entity *en_c2) {
+    bool collision_detected = false;
+    float dist = v2_dist(get_entity_midpoint(en_c1), get_entity_midpoint(en_c2));
+    float combRad = (en_c1->size.x + en_c2->size.y) / 2.0f;
+    if (dist <= combRad) {
+        collision_detected = true;
+    }
+    return collision_detected;
+}
+
+bool point_rectangle_collision(Entity *en_p, Entity *en_r) {
+    bool collision_detected = false;
+    if (en_p->pos.x >= en_r->pos.x && en_p->pos.x <= en_r->pos.x + en_r->size.x && en_p->pos.y >= en_r->pos.y &&
+        en_p->pos.y <= en_r->pos.y + en_r->size.y) {
+        collision_detected = true;
+    }
+    return collision_detected;
+}
+
+bool rectangle_rectangle_collision(Entity *en_r1, Entity *en_r2) {
+    bool collision_detected = false;
+    if (en_r1->pos.x < en_r2->pos.x + en_r2->size.x && en_r1->pos.x + en_r1->size.x > en_r2->pos.x &&
+        en_r1->pos.y < en_r2->pos.y + en_r2->size.y && en_r1->pos.y + en_r1->size.y > en_r2->pos.y) {
+        collision_detected = true;
+    }
+    return collision_detected;
+}
+
+bool circle_rectangle_collision(Entity *en_c, Entity *en_r) {
+    bool collision_detected = false;
+    float testX = get_entity_midpoint(en_c).x;
+    float testY = get_entity_midpoint(en_c).y;
+    if (get_entity_midpoint(en_c).x < en_r->pos.x)
+        testX = en_r->pos.x; // left edge
+    else if (get_entity_midpoint(en_c).x > en_r->pos.x + en_r->size.x)
+        testX = en_r->pos.x + en_r->size.x; // right edge
+
+    if (get_entity_midpoint(en_c).y < en_r->pos.y)
+        testY = en_r->pos.y; // bottom edge
+    else if (get_entity_midpoint(en_c).y > en_r->pos.y + en_r->size.y)
+        testY = en_r->pos.y + en_r->size.y; // top edge
+
+    float distX = get_entity_midpoint(en_c).x - testX;
+    float distY = get_entity_midpoint(en_c).y - testY;
+    float distance = sqrt((distX * distX) + (distY * distY));
+
+    if (distance <= en_c->size.x / 2.0f) {
+        collision_detected = true;
+    }
+    return collision_detected;
+}
 
 bool check_entity_collision(Entity *en_1, Entity *en_2) {
     bool collision_detected = false;
@@ -252,30 +313,14 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
                 collision_detected = true;
             }
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_rect) {
-            if (en_1->pos.x >= en_2->pos.x && en_1->pos.x <= en_2->pos.x + en_2->size.x && en_1->pos.y >= en_2->pos.y &&
-                en_1->pos.y <= en_2->pos.y + en_2->size.y) {
-                collision_detected = true;
-            }
         } else if (en_2->collider == COLL_point && en_1->collider == COLL_rect) {
             if (en_2->pos.x >= en_1->pos.x && en_2->pos.x <= en_1->pos.x + en_1->size.x && en_2->pos.y >= en_1->pos.y &&
                 en_2->pos.y <= en_1->pos.y + en_1->size.y) {
                 collision_detected = true;
             }
         } else if (en_1->collider == COLL_circ && en_2->collider == COLL_circ) {
-            float dist = v2_dist(get_entity_midpoint(en_1), get_entity_midpoint(en_2));
-            float combRad = (en_1->size.x + en_2->size.y) / 2.0f;
-            if (dist <= combRad) {
-                collision_detected = true;
-            }
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_point) {
-            if (en_1->pos.x == en_2->pos.x && en_1->pos.y == en_2->pos.y) {
-                collision_detected = true;
-            }
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_circ) {
-            float dist = v2_dist(en_1->pos, get_entity_midpoint(en_2));
-            if (dist <= en_2->size.x) {
-                collision_detected = true;
-            }
         } else if (en_2->collider == COLL_point && en_1->collider == COLL_circ) {
             float dist = v2_dist(en_2->pos, get_entity_midpoint(en_1));
             if (dist <= en_1->size.x) {
@@ -706,12 +751,6 @@ void animate_v2_to_target(Vector2 *value, Vector2 target, float rate) {
     animate_f32_to_target(&(value->y), target.y, rate);
 }
 
-inline float64 now() { return world->time_elapsed; }
-
-float alpha_from_end_time(float64 end_time, float length) { return float_alpha(now(), end_time - length, end_time); }
-
-bool has_reached_end_time(float64 end_time) { return now() > end_time; }
-
 // :particle system
 typedef enum ParticleFlags {
     PARTICLE_FLAGS_valid = (1 << 0),
@@ -998,9 +1037,8 @@ int entry(int argc, char **argv) {
                             Vector2 down_vec = v2_normalize(en_to_en_vec);
                             float g_mag = 6.67 * pow(10.0f, -11.0f) * get_planet()->mass * en->mass /
                                           pow(v2_length(en_to_en_vec), 2.0f);
-                            // prevent black holing
+                            // speed limit
                             g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
-                            // g_mag = clamp_bottom(g_mag, -9.8 * 10 * 20);
                             Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
                             push_z_layer(layer_en_debug);
                             draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(g_force, 0.05)),
@@ -1076,9 +1114,6 @@ int entry(int argc, char **argv) {
             }
 
             pop_z_layer();
-            // draw_rect(v2(tile_pos_to_world_pos(mouse_tile_x) + tile_width *
-            // -0.5, tile_pos_to_world_pos(mouse_tile_y) + tile_width * -0.5),
-            // v2(tile_width, tile_width), v4(0.5, 0.5, 0.5, 0.5));
         }
 
         //: ui
