@@ -157,6 +157,7 @@ typedef struct Entity {
     Vector2 input_axis;
     float move_speed;
     float64 mass;
+    Vector2 center_mass;
     bool is_static;
     Vector2 pos;
     Vector2 velocity;
@@ -318,6 +319,7 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
             if (distance <= en_1->size.x / 2.0f) {
                 collision_detected = true;
             }
+        } else if (en_1->collider == COLL_point && en_2->collider == COLL_line) {
         }
     }
 
@@ -456,6 +458,7 @@ void setup_player(Entity *en) {
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->mass = 5.9722;
+    en->center_mass = get_entity_midpoint(en);
     en->energy.max = 100;
     en->energy.current = en->energy.max;
 }
@@ -519,6 +522,7 @@ void setup_planet(Entity *en) {
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = v2(256, 256);
     en->mass = 5.9722 * pow(10, 20);
+    en->center_mass = get_entity_midpoint(en);
 }
 
 void setup_world() {
@@ -561,6 +565,7 @@ void render_sprite_entity(Entity *en) {
     if (en->is_valid) {
         Sprite *sprite = get_sprite(en->sprite_id);
         Matrix4 xform = m4_scalar(1.0);
+        xform = m4_rotate(xform, v3(0, 0, 1), en->orientation);
         xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
         draw_image_xform(sprite->image, xform, en->size, en->color);
         if (debug_render) {
@@ -1020,9 +1025,9 @@ int entry(int argc, char **argv) {
                             // log("%f %f", en->momentum.x, en->momentum.y);
                             float torque = 0;
                             en->angular_velocity += delta_t * torque / en->mass;
+                            en->orientation += en->angular_velocity * delta_t;
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                             en->energy.current += en->energy.rate * delta_t;
-                            en->orientation += en->angular_velocity * delta_t;
                         }
                         render_sprite_entity(en);
                         break;
