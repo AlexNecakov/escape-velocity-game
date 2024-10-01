@@ -199,6 +199,8 @@ Vector3 get_line_intersection(Vector2 v1_start, Vector2 v1_end, Vector2 v2_start
     }
 }
 
+bool point_point_collision(Entity *en_1, Entity *en_2) { return false; }
+
 bool check_entity_collision(Entity *en_1, Entity *en_2) {
     bool collision_detected = false;
     if (en_1->is_valid && en_2->is_valid) {
@@ -565,8 +567,10 @@ void render_sprite_entity(Entity *en) {
     if (en->is_valid) {
         Sprite *sprite = get_sprite(en->sprite_id);
         Matrix4 xform = m4_scalar(1.0);
-        xform = m4_rotate(xform, v3(0, 0, 1), en->orientation);
         xform = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
+        xform = m4_translate(xform, v3(en->center_mass.x, en->center_mass.y, 0));
+        xform = m4_rotate(xform, v3(0, 0, 1), en->orientation);
+        xform = m4_translate(xform, v3(-en->center_mass.x, -en->center_mass.y, 0));
         draw_image_xform(sprite->image, xform, en->size, en->color);
         if (debug_render) {
             if (en->collider == COLL_rect) {
@@ -1025,7 +1029,8 @@ int entry(int argc, char **argv) {
                             // log("%f %f", en->momentum.x, en->momentum.y);
                             float torque = 0;
                             en->angular_velocity += delta_t * torque / en->mass;
-                            en->orientation += en->angular_velocity * delta_t;
+                            // en->orientation += en->angular_velocity * delta_t;
+                            en->orientation += delta_t;
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                             en->energy.current += en->energy.rate * delta_t;
                         }
