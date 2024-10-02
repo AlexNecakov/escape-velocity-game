@@ -317,6 +317,13 @@ bool line_line_collision(Entity *en_l1, Entity *en_l2) {
     return collision_detected;
 }
 
+bool line_rectangle_collision(Entity *en_l, Entity *en_r) {
+    bool collision_detected = false;
+    // go through four lines and detect collision
+    return collision_detected;
+}
+bool rectangle_line_collision(Entity *en_r, Entity *en_l) { return line_rectangle_collision(en_l, en_r); }
+
 bool check_entity_collision(Entity *en_1, Entity *en_2) {
     bool collision_detected = false;
     if (en_1->is_valid && en_2->is_valid) {
