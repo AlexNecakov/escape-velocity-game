@@ -319,7 +319,31 @@ bool line_line_collision(Entity *en_l1, Entity *en_l2) {
 
 bool line_rectangle_collision(Entity *en_l, Entity *en_r) {
     bool collision_detected = false;
-    // go through four lines and detect collision
+    Vector2 temp_pos = en_r->pos;
+    Vector2 temp_size = en_r->size;
+
+    // left
+    en_r->size = v2(0, temp_size.y);
+    collision_detected = line_line_collision(en_l, en_r) ? true : collision_detected;
+
+    // top
+    en_r->pos = v2_add(temp_pos, v2(0, temp_size.y));
+    en_r->size = v2(temp_size.x, 0);
+    collision_detected = line_line_collision(en_l, en_r) ? true : collision_detected;
+
+    // right
+    en_r->pos = v2_add(temp_pos, temp_size);
+    en_r->size = v2(0, -temp_size.y);
+    collision_detected = line_line_collision(en_l, en_r) ? true : collision_detected;
+
+    // bottom
+    en_r->pos = v2_add(temp_pos, v2(temp_size.x, 0));
+    en_r->size = v2(-temp_size.x, 0);
+    collision_detected = line_line_collision(en_l, en_r) ? true : collision_detected;
+
+    en_r->pos = temp_pos;
+    en_r->size = temp_size;
+
     return collision_detected;
 }
 bool rectangle_line_collision(Entity *en_r, Entity *en_l) { return line_rectangle_collision(en_l, en_r); }
