@@ -2,6 +2,7 @@
 
 //: constants
 #define MAX_ENTITY_COUNT 4096
+#define MAX_VERT 8
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof(array[0]))
 
 #define clamp_bottom(a, b) max(a, b)
@@ -157,6 +158,7 @@ typedef struct Entity {
     SpriteID sprite_id;
     float end_time;
     Collider collider;
+    Vector2 vertices[4];
     Vector2 size;
     Vector2 move_vec;
     Vector2 input_axis;
@@ -348,6 +350,158 @@ bool line_rectangle_collision(Entity *en_l, Entity *en_r) {
 }
 bool rectangle_line_collision(Entity *en_r, Entity *en_l) { return line_rectangle_collision(en_l, en_r); }
 
+bool polygon_point_collision(Entity *en_y, Entity *en_p) {
+    bool collision_detected = false;
+    int next = 0;
+    // hardcoding as we only support oriented rect colliders for now
+    for (int i = 0; i < 4; i++) {
+        next = i + 1;
+        if (next == 4) {
+            next = 0;
+        }
+        Vector2 vc = en_y->vertices[i];
+        Vector2 vn = en_y->vertices[next];
+
+        if (((vc.y >= en_p->pos.y && vn.y < en_p->pos.y) || (vc.y < en_p->pos.y && vn.y >= en_p->pos.y)) &&
+            (en_p->pos.x < (vn.x - vc.x) * (en_p->pos.y - vc.y) / (vn.y - vc.y) + vc.x)) {
+            collision_detected = !collision_detected;
+        }
+    }
+    return collision_detected;
+}
+bool point_polygon_collision(Entity *en_p, Entity *en_y) { return polygon_point_collision(en_y, en_p); }
+
+bool polygon_circle_collision(Entity *en_y, Entity *en_c) {
+    bool collision_detected = false;
+
+    Vector2 temp_pos = en_y->pos;
+    Vector2 temp_size = en_y->size;
+
+    int next = 0;
+    for (int i = 0; i < 4; i++) {
+        next = i + 1;
+        if (next == 4) {
+            next = 0;
+        }
+        Vector2 vc = en_y->vertices[i];
+        Vector2 vn = en_y->vertices[next];
+
+        en_y->pos = vc;
+        en_y->size = v2_sub(vn, vc);
+        collision_detected = line_circle_collision(en_y, en_c);
+
+        if (collision_detected) {
+            en_y->pos = temp_pos;
+            en_y->size = temp_size;
+            return collision_detected;
+        }
+    }
+
+    en_y->pos = temp_pos;
+    en_y->size = temp_size;
+
+    return collision_detected;
+}
+bool circle_polygon_collision(Entity *en_c, Entity *en_y) { return polygon_circle_collision(en_y, en_c); }
+
+bool polygon_rectangle_collision(Entity *en_y, Entity *en_r) {
+    bool collision_detected = false;
+
+    Vector2 temp_pos = en_y->pos;
+    Vector2 temp_size = en_y->size;
+
+    int next = 0;
+    for (int i = 0; i < 4; i++) {
+        next = i + 1;
+        if (next == 4) {
+            next = 0;
+        }
+        Vector2 vc = en_y->vertices[i];
+        Vector2 vn = en_y->vertices[next];
+
+        en_y->pos = vc;
+        en_y->size = v2_sub(vn, vc);
+        collision_detected = line_rectangle_collision(en_y, en_r);
+
+        if (collision_detected) {
+            en_y->pos = temp_pos;
+            en_y->size = temp_size;
+            return collision_detected;
+        }
+    }
+
+    en_y->pos = temp_pos;
+    en_y->size = temp_size;
+
+    return collision_detected;
+}
+bool rectangle_polygon_collision(Entity *en_r, Entity *en_y) { return polygon_rectangle_collision(en_y, en_r); }
+
+bool polygon_line_collision(Entity *en_y, Entity *en_l) {
+    bool collision_detected = false;
+
+    Vector2 temp_pos = en_y->pos;
+    Vector2 temp_size = en_y->size;
+
+    int next = 0;
+    for (int i = 0; i < 4; i++) {
+        next = i + 1;
+        if (next == 4) {
+            next = 0;
+        }
+        Vector2 vc = en_y->vertices[i];
+        Vector2 vn = en_y->vertices[next];
+
+        en_y->pos = vc;
+        en_y->size = v2_sub(vn, vc);
+        collision_detected = line_line_collision(en_y, en_l);
+
+        if (collision_detected) {
+            en_y->pos = temp_pos;
+            en_y->size = temp_size;
+            return collision_detected;
+        }
+    }
+
+    en_y->pos = temp_pos;
+    en_y->size = temp_size;
+
+    return collision_detected;
+}
+bool line_polygon_collision(Entity *en_l, Entity *en_y) { return polygon_line_collision(en_y, en_l); }
+
+bool polygon_polygon_collision(Entity *en_y1, Entity *en_y2) {
+    bool collision_detected = false;
+
+    Vector2 temp_pos = en_y1->pos;
+    Vector2 temp_size = en_y1->size;
+
+    int next = 0;
+    for (int i = 0; i < 4; i++) {
+        next = i + 1;
+        if (next == 4) {
+            next = 0;
+        }
+        Vector2 vc = en_y1->vertices[i];
+        Vector2 vn = en_y1->vertices[next];
+
+        en_y1->pos = vc;
+        en_y1->size = v2_sub(vn, vc);
+        collision_detected = line_polygon_collision(en_y1, en_y2);
+
+        if (collision_detected) {
+            en_y1->pos = temp_pos;
+            en_y1->size = temp_size;
+            return collision_detected;
+        }
+    }
+
+    en_y1->pos = temp_pos;
+    en_y1->size = temp_size;
+
+    return collision_detected;
+}
+
 bool check_entity_collision(Entity *en_1, Entity *en_2) {
     bool collision_detected = false;
     if (en_1->is_valid && en_2->is_valid) {
@@ -509,13 +663,21 @@ Entity *entity_create() {
 
 void entity_destroy(Entity *entity) { memset(entity, 0, sizeof(Entity)); }
 
+void set_rectangle_collider(Entity *en) {
+    en->collider = COLL_rect;
+    en->vertices[0] = en->pos;
+    en->vertices[1] = v2_add(en->pos, v2(0, en->size.y));
+    en->vertices[2] = v2_add(en->pos, en->size);
+    en->vertices[3] = v2_add(en->pos, v2(en->size.x, 0));
+}
+
 void setup_player(Entity *en) {
     en->arch = ARCH_player;
     en->is_sprite = true;
     en->sprite_id = SPRITE_player;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    en->collider = COLL_rect;
+    set_rectangle_collider(en);
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->mass = 5.9722;
@@ -633,10 +795,10 @@ void render_sprite_entity(Entity *en) {
         draw_image_xform(sprite->image, xform, en->size, en->color);
         if (debug_render) {
             if (en->collider == COLL_rect) {
-                draw_rect_xform(xform, en->size, v4(en->color.r, en->color.g, en->color.b, 0.7));
+                draw_rect_xform(xform, en->size, v4(en->color.r, en->color.g, en->color.b, 0.3));
             }
             if (en->collider == COLL_circ) {
-                draw_circle_xform(xform, en->size, v4(en->color.r, en->color.g, en->color.b, 0.7));
+                draw_circle_xform(xform, en->size, v4(en->color.r, en->color.g, en->color.b, 0.3));
             }
         }
     }
@@ -1070,9 +1232,6 @@ int entry(int argc, char **argv) {
                             push_z_layer(layer_en_debug + 1);
                             draw_line(get_entity_midpoint(en),
                                       v2_add(get_entity_midpoint(en), v2_mulf(en->move_vec, 0.05)), 1, COLOR_YELLOW);
-                            // draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(down_vec,
-                            // 5)), 1,
-                            //         COLOR_PURPLE);
                             pop_z_layer();
                             en->momentum = v2_add(en->momentum, v2_mulf(en->move_vec, delta_t));
 
@@ -1085,7 +1244,6 @@ int entry(int argc, char **argv) {
                                 }
                             }
 
-                            // log("%f %f", en->momentum.x, en->momentum.y);
                             float torque = 0;
                             en->angular_velocity += delta_t * torque / en->mass;
                             // en->orientation += en->angular_velocity * delta_t;
