@@ -179,7 +179,7 @@ void entity_apply_defaults(Entity *en) {}
 
 Vector2 get_entity_midpoint(Entity *en) { return v2(en->pos.x + en->size.x / 2.0, en->pos.y + en->size.y / 2.0); }
 
-Vector2 get_line_endpoint(Entity *en) { return v2(en->pos.x + en->size.x, en->pos.y + en->size.y); }
+Vector2 get_line_endpoint(Entity *en) { return v2_add(en->pos, en->size); }
 
 //: collision
 
@@ -628,7 +628,7 @@ void render_rect_entity(Entity *en) {
 
 void render_line_entity(Entity *en) {
     if (en->is_valid) {
-        Vector2 endpoint = get_line_endpoint(en->pos, en->size.x, to_radians(get_entity_angle(en)));
+        Vector2 endpoint = get_line_endpoint(en);
         draw_line(en->pos, endpoint, en->size.y, en->color);
     }
 }
@@ -727,6 +727,13 @@ Draw_Quad ndc_quad_to_screen_quad(Draw_Quad ndc_quad) {
 }
 
 //: animate
+inline float64 now() { return world->time_elapsed; }
+inline float64 app_now() { return os_get_elapsed_seconds(); }
+
+float alpha_from_end_time(float64 end_time, float length) { return float_alpha(now(), end_time - length, end_time); }
+
+bool has_reached_end_time(float64 end_time) { return now() > end_time; }
+
 bool animate_f32_to_target(float *value, float target, float rate) {
     *value += (target - *value) * (1.0 - pow(2.0f, -rate * delta_t));
     if (almost_equals(*value, target, 0.001f)) {
@@ -1006,7 +1013,7 @@ int entry(int argc, char **argv) {
             }
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
-            float angle = get_entity_angle(get_player());
+            // float angle = get_entity_angle(get_player());
             float thrust_mult = (get_player()->is_thrusting && get_player()->energy.current > 0) ? 14 : 1;
             get_player()->move_vec = v2_mulf(get_player()->input_axis, thrust_mult * get_player()->move_speed);
             get_player()->energy.rate = -1 * thrust_mult * v2_length(get_player()->input_axis);
