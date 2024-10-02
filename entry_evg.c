@@ -40,6 +40,11 @@ float v2_angle(Vector2 a, Vector2 b) {
     return angle;
 }
 
+Vector2 v2_proj(Vector2 a, Vector2 b) {
+    float slope = v2_dot(a, b) / pow(v2_length(b), 2);
+    return v2_mulf(a, slope);
+}
+
 float sin_breathe(float time, float rate) { return (sin(time * rate) + 1.0) / 2.0; }
 
 bool almost_equals(float a, float b, float epsilon) { return fabs(a - b) <= epsilon; }
@@ -174,24 +179,9 @@ void entity_apply_defaults(Entity *en) {}
 
 Vector2 get_entity_midpoint(Entity *en) { return v2(en->pos.x + en->size.x / 2.0, en->pos.y + en->size.y / 2.0); }
 
+Vector2 get_line_endpoint(Entity *en) { return v2(en->pos.x + en->size.x, en->pos.y + en->size.y); }
+
 //: collision
-Vector3 get_line_intersection(Vector2 v1_start, Vector2 v1_end, Vector2 v2_start, Vector2 v2_end) {
-    float uA =
-        ((v2_end.x - v2_start.x) * (v1_start.y - v2_start.y) - (v2_end.y - v2_start.y) * (v1_start.x - v2_start.x)) /
-        ((v2_end.y - v2_start.y) * (v1_end.x - v1_start.x) - (v2_end.x - v2_start.x) * (v1_end.y - v1_start.y));
-    float uB =
-        ((v1_end.x - v1_start.x) * (v1_start.y - v2_start.y) - (v1_end.y - v1_start.y) * (v1_start.x - v2_start.x)) /
-        ((v2_end.y - v2_start.y) * (v1_end.x - v1_start.x) - (v2_end.x - v2_start.x) * (v1_end.y - v1_start.y));
-    if (uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1) {
-        // point of intersection in 2d with bool found value as z
-        float intersectionX = v1_start.x + (uA * (v1_end.x - v1_start.x));
-        float intersectionY = v1_start.y + (uA * (v1_end.y - v1_start.y));
-        return v3(intersectionX, intersectionY, 1);
-    } else {
-        // z value is bool intersection found
-        return v3(0, 0, 0);
-    }
-}
 
 bool point_point_collision(Entity *en_p1, Entity *en_p2) {
     bool collision_detected = false;
@@ -209,6 +199,7 @@ bool point_circle_collision(Entity *en_p, Entity *en_c) {
     }
     return collision_detected;
 }
+bool circle_point_collision(Entity *en_c, Entity *en_p) { return point_circle_collision(en_p, en_c); }
 
 bool circle_circle_collision(Entity *en_c1, Entity *en_c2) {
     bool collision_detected = false;
@@ -228,6 +219,7 @@ bool point_rectangle_collision(Entity *en_p, Entity *en_r) {
     }
     return collision_detected;
 }
+bool rectangle_point_collision(Entity *en_r, Entity *en_p) { return point_rectangle_collision(en_p, en_r); }
 
 bool rectangle_rectangle_collision(Entity *en_r1, Entity *en_r2) {
     bool collision_detected = false;
@@ -261,112 +253,103 @@ bool circle_rectangle_collision(Entity *en_c, Entity *en_r) {
     }
     return collision_detected;
 }
+bool rectangle_circle_collision(Entity *en_r, Entity *en_c) { return circle_rectangle_collision(en_c, en_r); }
+
+bool line_point_collision(Entity *en_l, Entity *en_p) {
+    bool collision_detected = false;
+    float dist1 = v2_dist(en_l->pos, en_p->pos);
+    float dist2 = v2_dist(get_line_endpoint(en_l), en_p->pos);
+    if (almost_equals(dist1 + dist2, v2_length(en_l->size), 0.05)) {
+        collision_detected = true;
+    }
+    return collision_detected;
+}
+bool point_line_collision(Entity *en_p, Entity *en_l) { return line_point_collision(en_l, en_p); }
+
+bool line_circle_collision(Entity *en_l, Entity *en_c) {
+    bool collision_detected = false;
+
+    collision_detected = point_circle_collision(en_l, en_c);
+    en_l->pos = v2_add(en_l->pos, en_l->size);
+    collision_detected = point_circle_collision(en_l, en_c);
+    en_l->pos = v2_sub(en_l->pos, en_l->size);
+    // stop early if possible
+    if (collision_detected) {
+        return collision_detected;
+    }
+
+    Vector2 closest_point = v2_proj(get_line_endpoint(en_l), get_entity_midpoint(en_c));
+    Vector2 temp_pos = en_c->pos;
+    en_c->pos = closest_point;
+    collision_detected = point_line_collision(en_c, en_l);
+    en_c->pos = temp_pos;
+    // bail early again
+    if (!collision_detected) {
+        return collision_detected;
+    }
+
+    temp_pos = en_l->pos;
+    en_l->pos = closest_point;
+    collision_detected = point_circle_collision(en_l, en_c);
+    en_l->pos = temp_pos;
+
+    return collision_detected;
+}
+bool circle_line_collision(Entity *en_c, Entity *en_l) { return line_circle_collision(en_l, en_c); }
+
+bool line_line_collision(Entity *en_l1, Entity *en_l2) {
+    bool collision_detected = false;
+
+    float uA = ((get_line_endpoint(en_l2).x - en_l2->pos.x) * (en_l1->pos.y - en_l2->pos.y) -
+                (get_line_endpoint(en_l2).y - en_l2->pos.y) * (en_l1->pos.x - en_l2->pos.x)) /
+               ((get_line_endpoint(en_l2).y - en_l2->pos.y) * (get_line_endpoint(en_l1).x - en_l1->pos.x) -
+                (get_line_endpoint(en_l2).x - en_l2->pos.x) * (get_line_endpoint(en_l1).y - en_l1->pos.y));
+    float uB = ((get_line_endpoint(en_l1).x - en_l1->pos.x) * (en_l1->pos.y - en_l2->pos.y) -
+                (get_line_endpoint(en_l1).y - en_l1->pos.y) * (en_l1->pos.x - en_l2->pos.x)) /
+               ((get_line_endpoint(en_l2).y - en_l2->pos.y) * (get_line_endpoint(en_l1).x - en_l1->pos.x) -
+                (get_line_endpoint(en_l2).x - en_l2->pos.x) * (get_line_endpoint(en_l1).y - en_l1->pos.y));
+    if (uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1) {
+        // point of intersection in 2d with bool found value as z
+        float intersectionX = en_l1->pos.x + (uA * (get_line_endpoint(en_l1).x - en_l1->pos.x));
+        float intersectionY = en_l1->pos.y + (uA * (get_line_endpoint(en_l1).y - en_l1->pos.y));
+        collision_detected = true;
+    }
+    return collision_detected;
+}
 
 bool check_entity_collision(Entity *en_1, Entity *en_2) {
     bool collision_detected = false;
     if (en_1->is_valid && en_2->is_valid) {
         if (en_1->collider == COLL_rect && en_2->collider == COLL_rect) {
-            if (en_1->pos.x < en_2->pos.x + en_2->size.x && en_1->pos.x + en_1->size.x > en_2->pos.x &&
-                en_1->pos.y < en_2->pos.y + en_2->size.y && en_1->pos.y + en_1->size.y > en_2->pos.y) {
-                collision_detected = true;
-            }
+            collision_detected = rectangle_rectangle_collision(en_1, en_2);
         } else if (en_1->collider == COLL_line && en_2->collider == COLL_line) {
-            Vector2 end_1 = get_line_endpoint(en_1->pos, en_1->size.x, to_radians(get_entity_angle(en_1)));
-            Vector2 end_2 = get_line_endpoint(en_2->pos, en_2->size.x, to_radians(get_entity_angle(en_2)));
-            if (get_line_intersection(en_1->pos, end_1, en_2->pos, end_2).z) {
-                collision_detected = true;
-            }
+            collision_detected = line_line_collision(en_1, en_2);
         } else if (en_1->collider == COLL_line && en_2->collider == COLL_rect) {
-            Vector2 end_1 = get_line_endpoint(en_1->pos, en_1->size.x, to_radians(get_entity_angle(en_1)));
-            if (get_line_intersection(en_1->pos, end_1, en_2->pos, v2(en_2->pos.x + en_2->size.x, en_2->pos.y)).z) {
-                collision_detected = true;
-            }
-            if (get_line_intersection(en_1->pos, end_1, en_2->pos, v2(en_2->pos.x, en_2->pos.y + en_2->size.y)).z) {
-                collision_detected = true;
-            }
-            if (get_line_intersection(en_1->pos, end_1, v2(en_2->pos.x + en_2->size.x, en_2->pos.y),
-                                      v2(en_2->pos.x + en_2->size.x, en_2->pos.y + en_2->size.y))
-                    .z) {
-                collision_detected = true;
-            }
-            if (get_line_intersection(en_1->pos, end_1, v2(en_2->pos.x, en_2->pos.y + en_2->size.y),
-                                      v2(en_2->pos.x + en_2->size.x, en_2->pos.y + en_2->size.y))
-                    .z) {
-                collision_detected = true;
-            }
+            collision_detected = line_rectangle_collision(en_1, en_2);
         } else if (en_1->collider == COLL_rect && en_2->collider == COLL_line) {
-            Vector2 end_2 = get_line_endpoint(en_2->pos, en_2->size.x, to_radians(get_entity_angle(en_2)));
-            if (get_line_intersection(en_2->pos, end_2, en_1->pos, v2(en_1->pos.x + en_1->size.x, en_1->pos.y)).z) {
-                collision_detected = true;
-            }
-            if (get_line_intersection(en_2->pos, end_2, en_1->pos, v2(en_1->pos.x, en_1->pos.y + en_1->size.y)).z) {
-                collision_detected = true;
-            }
-            if (get_line_intersection(en_2->pos, end_2, v2(en_1->pos.x + en_1->size.x, en_1->pos.y),
-                                      v2(en_1->pos.x + en_1->size.x, en_1->pos.y + en_1->size.y))
-                    .z) {
-                collision_detected = true;
-            }
-            if (get_line_intersection(en_2->pos, end_2, v2(en_1->pos.x, en_1->pos.y + en_1->size.y),
-                                      v2(en_1->pos.x + en_1->size.x, en_1->pos.y + en_1->size.y))
-                    .z) {
-                collision_detected = true;
-            }
+            collision_detected = rectangle_line_collision(en_1, en_2);
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_rect) {
-        } else if (en_2->collider == COLL_point && en_1->collider == COLL_rect) {
-            if (en_2->pos.x >= en_1->pos.x && en_2->pos.x <= en_1->pos.x + en_1->size.x && en_2->pos.y >= en_1->pos.y &&
-                en_2->pos.y <= en_1->pos.y + en_1->size.y) {
-                collision_detected = true;
-            }
+            collision_detected = point_rectangle_collision(en_1, en_2);
+        } else if (en_1->collider == COLL_rect && en_2->collider == COLL_point) {
+            collision_detected = rectangle_point_collision(en_1, en_2);
         } else if (en_1->collider == COLL_circ && en_2->collider == COLL_circ) {
+            collision_detected = circle_circle_collision(en_1, en_2);
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_point) {
+            collision_detected = point_point_collision(en_1, en_2);
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_circ) {
-        } else if (en_2->collider == COLL_point && en_1->collider == COLL_circ) {
-            float dist = v2_dist(en_2->pos, get_entity_midpoint(en_1));
-            if (dist <= en_1->size.x) {
-                collision_detected = true;
-            }
+            collision_detected = point_circle_collision(en_1, en_2);
+        } else if (en_1->collider == COLL_circ && en_2->collider == COLL_point) {
+            collision_detected = circle_point_collision(en_1, en_2);
         } else if (en_1->collider == COLL_rect && en_2->collider == COLL_circ) {
-            float testX = get_entity_midpoint(en_2).x;
-            float testY = get_entity_midpoint(en_2).y;
-            if (get_entity_midpoint(en_2).x < en_1->pos.x)
-                testX = en_1->pos.x; // left edge
-            else if (get_entity_midpoint(en_2).x > en_1->pos.x + en_1->size.x)
-                testX = en_1->pos.x + en_1->size.x; // right edge
-
-            if (get_entity_midpoint(en_2).y < en_1->pos.y)
-                testY = en_1->pos.y; // bottom edge
-            else if (get_entity_midpoint(en_2).y > en_1->pos.y + en_1->size.y)
-                testY = en_1->pos.y + en_1->size.y; // top edge
-
-            float distX = get_entity_midpoint(en_2).x - testX;
-            float distY = get_entity_midpoint(en_2).y - testY;
-            float distance = sqrt((distX * distX) + (distY * distY));
-
-            if (distance <= en_2->size.x / 2.0f) {
-                collision_detected = true;
-            }
-        } else if (en_2->collider == COLL_rect && en_1->collider == COLL_circ) {
-            float testX = get_entity_midpoint(en_1).x;
-            float testY = get_entity_midpoint(en_1).y;
-            if (get_entity_midpoint(en_1).x < en_2->pos.x)
-                testX = en_2->pos.x; // left edge
-            else if (get_entity_midpoint(en_1).x > en_2->pos.x + en_2->size.x)
-                testX = en_2->pos.x + en_2->size.x; // right edge
-
-            if (get_entity_midpoint(en_1).y < en_2->pos.y)
-                testY = en_2->pos.y; // bottom edge
-            else if (get_entity_midpoint(en_1).y > en_2->pos.y + en_2->size.y)
-                testY = en_2->pos.y + en_2->size.y; // top edge
-
-            float distX = get_entity_midpoint(en_1).x - testX;
-            float distY = get_entity_midpoint(en_1).y - testY;
-            float distance = sqrt((distX * distX) + (distY * distY));
-
-            if (distance <= en_1->size.x / 2.0f) {
-                collision_detected = true;
-            }
+            collision_detected = rectangle_circle_collision(en_1, en_2);
+        } else if (en_1->collider == COLL_circ && en_2->collider == COLL_rect) {
+            collision_detected = circle_rectangle_collision(en_1, en_2);
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_line) {
+            collision_detected = point_line_collision(en_1, en_2);
+        } else if (en_1->collider == COLL_line && en_2->collider == COLL_point) {
+            collision_detected = line_point_collision(en_1, en_2);
+        } else if (en_1->collider == COLL_point && en_2->collider == COLL_point) {
+            collision_detected = point_point_collision(en_1, en_2);
         }
     }
 
