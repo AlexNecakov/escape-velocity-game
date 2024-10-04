@@ -158,6 +158,7 @@ typedef struct Entity {
     SpriteID sprite_id;
     float end_time;
     Collider collider;
+    // vertices are in entity space
     Vector2 vertices[4];
     Vector2 size;
     Vector2 move_vec;
@@ -271,10 +272,13 @@ bool point_line_collision(Entity *en_p, Entity *en_l) { return line_point_collis
 bool line_circle_collision(Entity *en_l, Entity *en_c) {
     bool collision_detected = false;
 
+    // endpoint checks
     collision_detected = point_circle_collision(en_l, en_c);
+
     en_l->pos = v2_add(en_l->pos, en_l->size);
-    collision_detected = point_circle_collision(en_l, en_c);
+    collision_detected = point_circle_collision(en_l, en_c) ? true : collision_detected;
     en_l->pos = v2_sub(en_l->pos, en_l->size);
+
     // stop early if possible
     if (collision_detected) {
         return collision_detected;
@@ -535,6 +539,10 @@ bool check_entity_collision(Entity *en_1, Entity *en_2) {
             collision_detected = line_point_collision(en_1, en_2);
         } else if (en_1->collider == COLL_point && en_2->collider == COLL_point) {
             collision_detected = point_point_collision(en_1, en_2);
+        } else if (en_1->collider == COLL_line && en_2->collider == COLL_circ) {
+            collision_detected = line_circle_collision(en_1, en_2);
+        } else if (en_1->collider == COLL_circ && en_2->collider == COLL_line) {
+            collision_detected = circle_line_collision(en_1, en_2);
         }
     }
 
@@ -556,6 +564,34 @@ bool check_entity_will_collide(Entity *en_1, Entity *en_2) {
 }
 
 void solid_entity_collision(Entity *en_1, Entity *en_2) {
+    Collider temp_coll1 = en_1->collider;
+    Collider temp_coll2 = en_2->collider;
+
+    if (en_1->collider == COLL_rect && en_1->orientation != 0) {
+        en_1->collider = COLL_polygon;
+        for (int i = 0; i < 4; i++) {
+            Matrix4 xform = m4_scalar(1.0);
+            xform = m4_translate(xform, v3(en_1->pos.x, en_1->pos.y, 0));
+            xform = m4_translate(xform, v3(en_1->center_mass.x, en_1->center_mass.y, 0));
+            xform = m4_rotate(xform, v3(0, 0, 1), en_1->orientation);
+            xform = m4_translate(xform, v3(-en_1->center_mass.x, -en_1->center_mass.y, 0));
+            // extract new vertex
+            en_1->vertices[i] = v2(xform.m[3][1], xform.m[3][2]);
+        }
+    }
+    if (en_2->collider == COLL_rect && en_2->orientation != 0) {
+        en_2->collider = COLL_polygon;
+        for (int i = 0; i < 4; i++) {
+            Matrix4 xform = m4_scalar(2.0);
+            xform = m4_translate(xform, v3(en_2->pos.x, en_2->pos.y, 0));
+            xform = m4_translate(xform, v3(en_2->center_mass.x, en_2->center_mass.y, 0));
+            xform = m4_rotate(xform, v3(0, 0, 2), en_2->orientation);
+            xform = m4_translate(xform, v3(-en_2->center_mass.x, -en_2->center_mass.y, 0));
+            // extract new vertex
+            en_2->vertices[i] = v2(xform.m[3][1], xform.m[3][2]);
+        }
+    }
+
     // repel out of other entity if dynamic solid
     if (check_entity_collision(en_1, en_2)) {
         Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_2), get_entity_midpoint(en_1));
@@ -577,6 +613,9 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
 
         en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
     }
+
+    en_1->collider = temp_coll1;
+    en_2->collider = temp_coll2;
 }
 
 bool check_ray_collision(Vector2 ray, Entity *en_1, Entity *en_2) {
@@ -665,10 +704,10 @@ void entity_destroy(Entity *entity) { memset(entity, 0, sizeof(Entity)); }
 
 void set_rectangle_collider(Entity *en) {
     en->collider = COLL_rect;
-    en->vertices[0] = en->pos;
-    en->vertices[1] = v2_add(en->pos, v2(0, en->size.y));
-    en->vertices[2] = v2_add(en->pos, en->size);
-    en->vertices[3] = v2_add(en->pos, v2(en->size.x, 0));
+    en->vertices[0] = v2(0, 0);
+    en->vertices[1] = v2(0, en->size.y);
+    en->vertices[2] = en->size;
+    en->vertices[3] = v2(en->size.x, 0);
 }
 
 void setup_player(Entity *en) {
@@ -677,62 +716,14 @@ void setup_player(Entity *en) {
     en->sprite_id = SPRITE_player;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    set_rectangle_collider(en);
+    // set_rectangle_collider(en);
+    en->collider = COLL_line;
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->mass = 5.9722;
     en->center_mass = get_entity_midpoint(en);
     en->energy.max = 100;
     en->energy.current = en->energy.max;
-}
-
-void setup_monster(Entity *en) {
-    en->arch = ARCH_monster;
-    en->is_sprite = true;
-    en->sprite_id = SPRITE_monster;
-    Sprite *sprite = get_sprite(en->sprite_id);
-    en->size = get_sprite_size(sprite);
-    en->collider = COLL_rect;
-    en->color = COLOR_WHITE;
-    en->move_speed = 25;
-}
-
-void setup_sword(Entity *en) {
-    en->arch = ARCH_weapon;
-    en->is_line = true;
-    en->is_attached_to_player = true;
-    en->collider = COLL_line;
-    en->color = COLOR_WHITE;
-    en->size = v2(35, 2);
-}
-
-void setup_bullet(Entity *en) {
-    en->arch = ARCH_weapon;
-    en->is_line = true;
-    en->collider = COLL_point;
-    en->color = COLOR_WHITE;
-    en->size = v2(2, 2);
-    en->move_speed = 250;
-}
-
-void setup_experience(Entity *en) {
-    en->arch = ARCH_pickup;
-    en->collider = COLL_rect;
-    en->color = COLOR_WHITE;
-    en->is_sprite = true;
-    en->sprite_id = SPRITE_experience;
-    Sprite *sprite = get_sprite(en->sprite_id);
-    en->size = get_sprite_size(sprite);
-}
-
-void setup_wall(Entity *en, Vector2 size) {
-    en->arch = ARCH_terrain;
-    en->is_line = true;
-    en->is_sprite = true;
-    en->collider = COLL_rect;
-    en->is_static = true;
-    en->color = COLOR_WHITE;
-    en->size = size;
 }
 
 void setup_planet(Entity *en) {
@@ -760,19 +751,6 @@ void setup_world() {
     Entity *player_en = entity_create();
     setup_player(player_en);
     player_en->pos = v2(0, planet_en->size.y + 100 * player_en->size.y);
-
-    // Entity* weapon_en = entity_create();
-    // setup_sword(weapon_en);
-
-    for (int i = 0; i < 0; i++) {
-        Entity *monster_en = entity_create();
-        setup_monster(monster_en);
-        monster_en->pos = v2(get_random_int_in_range(5, 15) * tile_width, 0);
-        monster_en->pos =
-            v2_rotate_point_around_pivot(monster_en->pos, v2(0, 0), get_random_float32_in_range(0, 2 * PI64));
-        monster_en->pos = v2_add(monster_en->pos, player_en->pos);
-        // log("monster pos %f %f", monster_en->pos.x, monster_en->pos.y);
-    }
 }
 
 void teardown_world() {
@@ -1102,7 +1080,7 @@ int entry(int argc, char **argv) {
         delta_t = now - last_time;
 // debug clamp dt for breakpoints
 #if CONFIGURATION == DEBUG
-        { clamp_top(delta_t, 0.5); }
+        { clamp_top(delta_t, 0.017); }
 #endif
 
         last_time = now;
@@ -1246,8 +1224,8 @@ int entry(int argc, char **argv) {
 
                             float torque = 0;
                             en->angular_velocity += delta_t * torque / en->mass;
-                            // en->orientation += en->angular_velocity * delta_t;
-                            en->orientation += delta_t;
+                            en->orientation += en->angular_velocity * delta_t;
+                            // en->orientation += delta_t;
                             en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                             en->energy.current += en->energy.rate * delta_t;
                         }
