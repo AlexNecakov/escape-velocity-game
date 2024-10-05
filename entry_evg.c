@@ -170,7 +170,6 @@ typedef struct Entity {
     // anchored bottom left of "square"
     Vector2 pos;
     Vector2 velocity;
-    Vector2 last_momentum;
     Vector2 momentum;
     float orientation;
     float angular_momentum;
@@ -593,17 +592,19 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
     }
 
     Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_2), get_entity_midpoint(en_1));
-    Vector2 down_vec = v2_normalize(en_to_en_vec);
     float g_mag = 6.67 * pow(10.0f, -11.0f) * en_2->mass * en_1->mass / pow(v2_length(en_to_en_vec), 2.0f);
-    g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
+    g_mag = clamp_top(g_mag, 2997924.0f);
     Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
 
     if (check_entity_collision(en_1, en_2)) {
+        // normal force
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(g_force, -1.0f * delta_t));
     } else if (check_entity_will_collide(en_1, en_2)) {
+        // impact force
         Vector2 impact_force = v2_mulf(en_1->velocity, -1.0f * en_1->mass / delta_t);
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(impact_force, delta_t));
     } else {
+        // gravity force
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(g_force, delta_t));
     }
     en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
@@ -617,6 +618,7 @@ typedef struct World {
     Entity entities[MAX_ENTITY_COUNT];
     UXState ux_state;
     float64 time_elapsed;
+    bool god_mode;
 } World;
 World *world = 0;
 
@@ -686,7 +688,7 @@ void setup_player(Entity *en) {
     set_rectangle_collider(en);
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
-    en->mass = 5.9722;
+    en->mass = 1;
     en->center_mass = get_entity_midpoint(en);
     en->energy.max = 500;
     en->energy.current = en->energy.max;
@@ -700,8 +702,8 @@ void setup_planet(Entity *en) {
     en->color = COLOR_WHITE;
     en->sprite_id = SPRITE_planet;
     Sprite *sprite = get_sprite(en->sprite_id);
-    en->size = v2(256, 256);
-    en->mass = 5.9722 * pow(10, 20);
+    en->size = v2(512, 512);
+    en->mass = 1 * pow(10, 19);
     en->center_mass = get_entity_midpoint(en);
 }
 
@@ -713,8 +715,8 @@ void setup_moon(Entity *en) {
     en->color = COLOR_WHITE;
     en->sprite_id = SPRITE_planet;
     Sprite *sprite = get_sprite(en->sprite_id);
-    en->size = v2(128, 128);
-    en->mass = 5.9722 * pow(10, 14);
+    en->size = v2(2048, 2048);
+    en->mass = 5.9722 * pow(10, 4);
     en->center_mass = get_entity_midpoint(en);
 }
 
@@ -722,18 +724,19 @@ void setup_world() {
 
     world->ux_state = UX_default;
     world->time_elapsed = 0;
+    world->god_mode = false;
 
     Entity *planet_en = entity_create();
     setup_planet(planet_en);
     planet_en->pos = v2(0, 0);
 
-    Entity *moon_en = entity_create();
-    setup_moon(moon_en);
-    moon_en->pos = v2(0, 1000);
+    // Entity *moon_en = entity_create();
+    // setup_moon(moon_en);
+    // moon_en->pos = v2(0, 500);
 
-    Entity *planet_en1 = entity_create();
-    setup_planet(planet_en1);
-    planet_en1->pos = v2(500, 50);
+    // Entity *planet_en1 = entity_create();
+    // setup_planet(planet_en1);
+    // planet_en1->pos = v2(500, 50);
 
     Entity *player_en = entity_create();
     setup_player(player_en);
@@ -1073,7 +1076,7 @@ int entry(int argc, char **argv) {
 
         last_time = now;
 
-        float zoom = 5.3;
+        float zoom = 1.0;
 
         // find player
         for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
@@ -1084,8 +1087,6 @@ int entry(int argc, char **argv) {
                 entity_destroy(en);
             } else if (en->is_valid && en->arch == ARCH_player) {
                 world_frame.player = en;
-            } else if (en->is_valid && en->arch == ARCH_planet) {
-                world_frame.planet = en;
             }
         }
 
@@ -1156,6 +1157,9 @@ int entry(int argc, char **argv) {
                 if (is_key_down('W')) {
                     get_player()->input_axis.y += 1.0;
                 }
+                if (is_key_down('G')) {
+                    world->god_mode = !world->god_mode;
+                }
                 if (is_key_down(KEY_SPACEBAR)) {
                     get_player()->is_thrusting = true;
                     // play_one_audio_clip(fixed_string("res\\sound\\burn.wav"));
@@ -1166,7 +1170,7 @@ int entry(int argc, char **argv) {
 
             get_player()->input_axis = v2_normalize(get_player()->input_axis);
             // float angle = get_entity_angle(get_player());
-            float thrust_mult = (get_player()->is_thrusting && get_player()->energy.current > 0) ? 14 : 1;
+            float thrust_mult = (get_player()->is_thrusting && get_player()->energy.current > 0) ? 8 : 1;
             get_player()->move_vec = v2_mulf(get_player()->input_axis, thrust_mult * get_player()->move_speed);
             get_player()->energy.rate = -1 * thrust_mult * v2_length(get_player()->input_axis);
         }
@@ -1182,8 +1186,6 @@ int entry(int argc, char **argv) {
                         push_z_layer(layer_entity);
                         //: physics
                         {
-                            en->last_momentum = en->momentum;
-
                             push_z_layer(layer_en_debug);
                             draw_line(get_entity_midpoint(en),
                                       v2_add(get_entity_midpoint(en), v2_mulf(en->move_vec, 0.05)), 1, COLOR_YELLOW);
@@ -1202,14 +1204,28 @@ int entry(int argc, char **argv) {
                             en->angular_velocity += delta_t * torque / en->mass;
                             en->orientation += en->angular_velocity * delta_t;
                             // en->orientation += delta_t;
-                            en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
-                            en->energy.current += en->energy.rate * delta_t;
+                            if (world->god_mode) {
+                                en->momentum = v2(0, 0);
+                                en->velocity = v2(0, 0);
+                                en->pos = v2_add(en->pos, v2_mulf(en->move_vec, delta_t));
+                            } else {
+                                en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
+                                en->energy.current += en->energy.rate * delta_t;
+                            }
                         }
                         render_sprite_entity(en);
                         break;
                     case ARCH_planet:
                         set_world_space();
                         push_z_layer(layer_entity);
+                        for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
+                            if (i != j) {
+                                Entity *other_en = &world->entities[j];
+                                solid_entity_collision(en, other_en);
+                            }
+                        }
+
+                        // en->pos = v2_add(en->pos, v2_mulf(en->velocity, delta_t));
                         render_sprite_entity(en);
                         break;
                     default:
