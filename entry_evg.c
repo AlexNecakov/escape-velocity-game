@@ -592,40 +592,24 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
         }
     }
 
-    // repel out of other entity if dynamic solid
-    if (check_entity_collision(en_1, en_2)) {
-        Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_2), get_entity_midpoint(en_1));
-        Vector2 force = v2_divf(v2_sub(en_1->momentum, en_1->last_momentum), delta_t);
-        float mag_in_dir = v2_dot(v2_normalize(en_to_en_vec), v2_normalize(force));
-        Vector2 normal_force = v2_mulf(v2_normalize(en_to_en_vec), mag_in_dir * v2_length(force) * -1.0f);
+    Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_2), get_entity_midpoint(en_1));
+    Vector2 down_vec = v2_normalize(en_to_en_vec);
+    float g_mag = 6.67 * pow(10.0f, -11.0f) * en_2->mass * en_1->mass / pow(v2_length(en_to_en_vec), 2.0f);
+    g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
+    Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
 
+    if (check_entity_collision(en_1, en_2)) {
+        en_1->momentum = v2_add(en_1->momentum, v2_mulf(g_force, -1.0f * delta_t));
+    } else if (check_entity_will_collide(en_1, en_2)) {
         Vector2 impact_force = v2_mulf(en_1->velocity, -1.0f * en_1->mass / delta_t);
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(impact_force, delta_t));
-        en_1->momentum = v2_add(en_1->momentum, v2_mulf(normal_force, delta_t));
-
-        en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
+    } else {
+        en_1->momentum = v2_add(en_1->momentum, v2_mulf(g_force, delta_t));
     }
+    en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
 
     en_1->collider = temp_coll1;
     en_2->collider = temp_coll2;
-}
-
-bool check_ray_collision(Vector2 ray, Entity *en_1, Entity *en_2) {
-    bool collision_detected = false;
-    if (en_1->pos.x < en_2->pos.x + en_2->size.x && en_1->pos.x + en_1->size.x + ray.x > en_2->pos.x &&
-        en_1->pos.y < en_2->pos.y + en_2->size.y && en_1->pos.y + en_1->size.y + ray.y > en_2->pos.y) {
-        collision_detected = true;
-    } else if (ray.x < en_2->pos.x + en_2->size.x && en_1->pos.x + en_1->size.x + ray.x > en_2->pos.x &&
-               en_1->pos.y < en_2->pos.y + en_2->size.y && en_1->pos.y + en_1->size.y + ray.y > en_2->pos.y) {
-        collision_detected = true;
-    } else if (ray.x < en_2->pos.x + en_2->size.x && en_1->pos.x + en_1->size.x + ray.x > en_2->pos.x &&
-               ray.y < en_2->pos.y + en_2->size.y && en_1->pos.y + en_1->size.y + ray.y > en_2->pos.y) {
-        collision_detected = true;
-    } else if (en_1->pos.x < en_2->pos.x + en_2->size.x && en_1->pos.x + en_1->size.x + ray.x > en_2->pos.x &&
-               ray.y < en_2->pos.y + en_2->size.y && en_1->pos.y + en_1->size.y + ray.y > en_2->pos.y) {
-        collision_detected = true;
-    }
-    return collision_detected;
 }
 
 //: world
@@ -645,15 +629,6 @@ bool world_attempt_load_from_disk() {
         log_error("Failed to load world.");
         return false;
     }
-
-    // NOTE, for errors I used to do stuff like this assert:
-    // assert(result.count == sizeof(World), "world size has changed!");
-    //
-    // But since shipping to users, I've noticed that it's always better to
-    // gracefully fail somehow. That's why this function returns a bool. We
-    // handle that at the callsite. Maybe we want to just start up a new world,
-    // throw a user friendly error, or whatever as a fallback. Not just crash
-    // the game lol.
 
     if (result.count != sizeof(World)) {
         log_error("world size different to one on disk.");
@@ -713,7 +688,7 @@ void setup_player(Entity *en) {
     en->move_speed = 150.0;
     en->mass = 5.9722;
     en->center_mass = get_entity_midpoint(en);
-    en->energy.max = 100;
+    en->energy.max = 500;
     en->energy.current = en->energy.max;
 }
 
@@ -754,11 +729,16 @@ void setup_world() {
 
     Entity *moon_en = entity_create();
     setup_moon(moon_en);
-    moon_en->pos = v2(0, 5000);
+    moon_en->pos = v2(0, 1000);
+
+    Entity *planet_en1 = entity_create();
+    setup_planet(planet_en1);
+    planet_en1->pos = v2(500, 50);
 
     Entity *player_en = entity_create();
     setup_player(player_en);
-    player_en->pos = v2(0, planet_en->size.y + 2.5 * player_en->size.y);
+    player_en->pos =
+        v2(planet_en->size.x / 2.0f - player_en->size.x / 2.0f, planet_en->size.y + 2.0 * player_en->size.y);
 }
 
 void teardown_world() {
@@ -1214,17 +1194,6 @@ int entry(int argc, char **argv) {
                             for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
                                 if (i != j) {
                                     Entity *other_en = &world->entities[j];
-                                    Vector2 en_to_en_vec =
-                                        v2_sub(get_entity_midpoint(other_en), get_entity_midpoint(en));
-                                    Vector2 down_vec = v2_normalize(en_to_en_vec);
-                                    float g_mag = 6.67 * pow(10.0f, -11.0f) * other_en->mass * en->mass /
-                                                  pow(v2_length(en_to_en_vec), 2.0f);
-                                    // speed limit
-                                    g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
-                                    Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
-                                    en->momentum = v2_add(en->momentum, v2_mulf(g_force, delta_t));
-
-                                    en->velocity = v2_divf(en->momentum, en->mass);
                                     solid_entity_collision(en, other_en);
                                 }
                             }
