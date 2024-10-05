@@ -597,17 +597,9 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
         Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(en_2), get_entity_midpoint(en_1));
         Vector2 force = v2_divf(v2_sub(en_1->momentum, en_1->last_momentum), delta_t);
         float mag_in_dir = v2_dot(v2_normalize(en_to_en_vec), v2_normalize(force));
-        mag_in_dir = 1;
         Vector2 normal_force = v2_mulf(v2_normalize(en_to_en_vec), mag_in_dir * v2_length(force) * -1.0f);
-        push_z_layer(layer_en_debug);
-        draw_line(get_entity_midpoint(en_1), v2_add(get_entity_midpoint(en_1), v2_mulf(normal_force, 0.05)), 1,
-                  COLOR_RED);
-        pop_z_layer();
 
         Vector2 impact_force = v2_mulf(en_1->velocity, -1.0f * en_1->mass / delta_t);
-        push_z_layer(layer_en_debug);
-        draw_line(get_entity_midpoint(en_1), v2_add(get_entity_midpoint(en_1), v2_mulf(impact_force, 0.05)), 1,
-                  COLOR_BLUE);
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(impact_force, delta_t));
         en_1->momentum = v2_add(en_1->momentum, v2_mulf(normal_force, delta_t));
 
@@ -716,8 +708,7 @@ void setup_player(Entity *en) {
     en->sprite_id = SPRITE_player;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    // set_rectangle_collider(en);
-    en->collider = COLL_line;
+    set_rectangle_collider(en);
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->mass = 5.9722;
@@ -739,6 +730,19 @@ void setup_planet(Entity *en) {
     en->center_mass = get_entity_midpoint(en);
 }
 
+void setup_moon(Entity *en) {
+    en->arch = ARCH_planet;
+    en->is_sprite = true;
+    en->collider = COLL_circ;
+    en->is_static = true;
+    en->color = COLOR_WHITE;
+    en->sprite_id = SPRITE_planet;
+    Sprite *sprite = get_sprite(en->sprite_id);
+    en->size = v2(128, 128);
+    en->mass = 5.9722 * pow(10, 14);
+    en->center_mass = get_entity_midpoint(en);
+}
+
 void setup_world() {
 
     world->ux_state = UX_default;
@@ -748,9 +752,13 @@ void setup_world() {
     setup_planet(planet_en);
     planet_en->pos = v2(0, 0);
 
+    Entity *moon_en = entity_create();
+    setup_moon(moon_en);
+    moon_en->pos = v2(0, 5000);
+
     Entity *player_en = entity_create();
     setup_player(player_en);
-    player_en->pos = v2(0, planet_en->size.y + 100 * player_en->size.y);
+    player_en->pos = v2(0, planet_en->size.y + 2.5 * player_en->size.y);
 }
 
 void teardown_world() {
@@ -1194,30 +1202,29 @@ int entry(int argc, char **argv) {
                         push_z_layer(layer_entity);
                         //: physics
                         {
-                            Vector2 en_to_en_vec = v2_sub(get_entity_midpoint(get_planet()), get_entity_midpoint(en));
-                            Vector2 down_vec = v2_normalize(en_to_en_vec);
-                            float g_mag = 6.67 * pow(10.0f, -11.0f) * get_planet()->mass * en->mass /
-                                          pow(v2_length(en_to_en_vec), 2.0f);
-                            // speed limit
-                            g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
-                            Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
-                            push_z_layer(layer_en_debug);
-                            draw_line(get_entity_midpoint(en), v2_add(get_entity_midpoint(en), v2_mulf(g_force, 0.05)),
-                                      1, COLOR_GREEN);
-                            pop_z_layer();
                             en->last_momentum = en->momentum;
-                            en->momentum = v2_add(en->momentum, v2_mulf(g_force, delta_t));
-                            push_z_layer(layer_en_debug + 1);
+
+                            push_z_layer(layer_en_debug);
                             draw_line(get_entity_midpoint(en),
                                       v2_add(get_entity_midpoint(en), v2_mulf(en->move_vec, 0.05)), 1, COLOR_YELLOW);
                             pop_z_layer();
                             en->momentum = v2_add(en->momentum, v2_mulf(en->move_vec, delta_t));
-
                             en->velocity = v2_divf(en->momentum, en->mass);
 
                             for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
-                                Entity *other_en = &world->entities[j];
                                 if (i != j) {
+                                    Entity *other_en = &world->entities[j];
+                                    Vector2 en_to_en_vec =
+                                        v2_sub(get_entity_midpoint(other_en), get_entity_midpoint(en));
+                                    Vector2 down_vec = v2_normalize(en_to_en_vec);
+                                    float g_mag = 6.67 * pow(10.0f, -11.0f) * other_en->mass * en->mass /
+                                                  pow(v2_length(en_to_en_vec), 2.0f);
+                                    // speed limit
+                                    g_mag = clamp_top(g_mag, 9.8 * 10 * 20);
+                                    Vector2 g_force = v2_mulf(v2_normalize(en_to_en_vec), g_mag);
+                                    en->momentum = v2_add(en->momentum, v2_mulf(g_force, delta_t));
+
+                                    en->velocity = v2_divf(en->momentum, en->mass);
                                     solid_entity_collision(en, other_en);
                                 }
                             }
