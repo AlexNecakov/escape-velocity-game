@@ -31,6 +31,8 @@ float64 delta_t;
 
 //: math
 inline float v2_dist(Vector2 a, Vector2 b) { return v2_length(v2_sub(a, b)); }
+inline float v2_length_squared(Vector2 a) { return (a.x * a.x + a.y * a.y); }
+inline float v2_dist_squared(Vector2 a, Vector2 b) { return v2_length_squared(v2_sub(a, b)); }
 
 float v2_det(Vector2 a, Vector2 b) { return (a.x * b.y - b.x * a.y); }
 
@@ -161,10 +163,12 @@ typedef struct Entity {
     // vertices are in entity space
     Vector2 vertices[4];
     Vector2 size;
+    Vector2 radius;
     Vector2 move_vec;
     Vector2 input_axis;
     float move_speed;
     float64 mass;
+    float64 inv_mass;
     Vector2 center_mass;
     bool is_static;
     // anchored bottom left of "square"
@@ -179,7 +183,7 @@ typedef struct Entity {
 
 void entity_apply_defaults(Entity *en) {}
 
-Vector2 get_entity_midpoint(Entity *en) { return v2(en->pos.x + en->size.x / 2.0, en->pos.y + en->size.y / 2.0); }
+Vector2 get_entity_midpoint(Entity *en) { return v2(en->pos.x + en->radius.x, en->pos.y + en->radius.y); }
 
 Vector2 get_line_endpoint(Entity *en) { return v2_add(en->pos, en->size); }
 
@@ -205,9 +209,10 @@ bool circle_point_collision(Entity *en_c, Entity *en_p) { return point_circle_co
 
 bool circle_circle_collision(Entity *en_c1, Entity *en_c2) {
     bool collision_detected = false;
-    float dist = v2_dist(get_entity_midpoint(en_c1), get_entity_midpoint(en_c2));
-    float combRad = (en_c1->size.x + en_c2->size.y) / 2.0f;
-    if (dist <= combRad) {
+    float dist_sq = v2_dist_squared(get_entity_midpoint(en_c1), get_entity_midpoint(en_c2));
+    float comb_radius = (en_c1->radius.x + en_c2->radius.x);
+    comb_radius *= comb_radius;
+    if (dist_sq <= comb_radius) {
         collision_detected = true;
     }
     return collision_detected;
@@ -609,6 +614,10 @@ void solid_entity_collision(Entity *en_1, Entity *en_2) {
     }
     en_1->velocity = v2_divf(en_1->momentum, en_1->mass);
 
+    float torque = 0;
+    en_1->angular_velocity += delta_t * torque / en_1->mass;
+    en_1->orientation += en_1->angular_velocity * delta_t;
+
     en_1->collider = temp_coll1;
     en_2->collider = temp_coll2;
 }
@@ -685,10 +694,14 @@ void setup_player(Entity *en) {
     en->sprite_id = SPRITE_player;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = get_sprite_size(sprite);
-    set_rectangle_collider(en);
+    en->size = v2(68, 68);
+    en->radius = v2(en->size.x / 2.0f, en->size.y / 2.0f);
+    // set_rectangle_collider(en);
+    en->collider = COLL_circ;
     en->color = COLOR_WHITE;
     en->move_speed = 150.0;
     en->mass = 1;
+    en->inv_mass = 1.0f / en->mass;
     en->center_mass = get_entity_midpoint(en);
     en->energy.max = 500;
     en->energy.current = en->energy.max;
@@ -703,7 +716,9 @@ void setup_planet(Entity *en) {
     en->sprite_id = SPRITE_planet;
     Sprite *sprite = get_sprite(en->sprite_id);
     en->size = v2(512, 512);
-    en->mass = 1 * pow(10, 19);
+    en->radius = v2(en->size.x / 2.0f, en->size.y / 2.0f);
+    en->mass = 1 * pow(10, 18);
+    en->inv_mass = 1.0f / en->mass;
     en->center_mass = get_entity_midpoint(en);
 }
 
@@ -1200,9 +1215,6 @@ int entry(int argc, char **argv) {
                                 }
                             }
 
-                            float torque = 0;
-                            en->angular_velocity += delta_t * torque / en->mass;
-                            en->orientation += en->angular_velocity * delta_t;
                             // en->orientation += delta_t;
                             if (world->god_mode) {
                                 en->momentum = v2(0, 0);
